@@ -17,10 +17,19 @@ import Data.Char
 import Text.Read
 import System.IO
 import System.Environment
+import qualified Control.Exception as E
+
+if' :: Bool -> a -> a -> a
+if' True  x _ = x
+if' False _ y = y
+
 
 -- Begin Lex --
 
-type SrcLoc = (Integer, Integer)
+data SrcLoc = SrcLoc {line :: Int, col :: Int}
+ 
+instance Show SrcLoc where
+  show (SrcLoc line col) = (show $ line) ++ ":" ++ (show $ col)
 
 data Token =
   Keyword {value :: String, loc :: SrcLoc} |
@@ -63,27 +72,39 @@ tokenize src =
 toToken :: String -> SrcLoc -> Token
 toToken s sl
   | (map toLower s) `elem` keywords = Keyword s sl
-  | isJust (readMaybe s :: Maybe Integer) = NumLit s sl
+  | isJust (readMaybe s :: Maybe Int) = NumLit s sl
   | s `elem` (map (\x -> [x]) ['a'..'z']) = Name s sl
   | isWhitespace s = Whitespace s sl
   | otherwise = InvalidToken s sl
 
 addNumbers :: [[String]] -> [Token]
 addNumbers strs = 
-  let incCol t = fromIntegral (length $ value t) + (snd $ loc t)
+  let incCol t = (length $ value t) + (col $ loc t)
       f prevs (t, lineNum) = case prevs of
-        [] -> toToken t (lineNum, 1) : prevs
-        _  -> toToken t (lineNum, incCol (head prevs)) : prevs
+        [] -> toToken t (SrcLoc lineNum 1) : prevs
+        _  -> toToken t (SrcLoc lineNum (incCol (head prevs))) : prevs
       addLines strs = map (\(x, y) -> zip x (cycle [y])) (zip strs [1..])
   in concat $ map (reverse . foldl f ([]::[Token])) (addLines strs)
 
 chadLex :: String -> [Token]
 chadLex src = addNumbers (tokenize src)
 
-isValidLex tokens = 
-  let isInvalid (InvalidToken _ _) = True
-      isInvalid _ = False
-  in not $ all isInvalid tokens
+isInvalidToken (InvalidToken _ _) = True
+isInvalidToken  _ = False
+
+formatInvalidTokens :: [Token] -> String
+formatInvalidTokens tokens = 
+  let invalidTokens = filter isInvalidToken tokens
+      initString = "The following invalid tokens were found:\n"
+      folder x y = x ++ "\"" ++ (value y) ++ "\" at " ++ (show $ loc y) ++ "\n"
+  -- TODO use composition
+  in foldl folder initString invalidTokens
+
+handleLex :: [Token] -> IO ()
+handleLex tokens =
+  if' (any isInvalidToken tokens)
+    (putStr (formatInvalidTokens tokens))
+    (putStr "Lexing complete.\n")
 
 -- End Lex --
 
@@ -96,17 +117,11 @@ isValidLex tokens =
 
 -- End Parse --
 
-if' :: Bool -> a -> a -> a
-if' True  x _ = x
-if' False _ y = y
-
-
 main = do
   filename <- getArgs
   handle <- openFile (head filename) ReadMode
   contents <- hGetContents handle
-  --print $ chadLex contents
   let tokens = chadLex contents
-  print (tokens)
-  if' (isValidLex tokens) (putStr "valid lex\n") (putStr "invalid lex\n")
+  --print (tokens)
+  handleLex tokens
   hClose handle
