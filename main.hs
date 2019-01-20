@@ -12,7 +12,6 @@ NumExpr = [0, 1, 2, ...]
 
 -}
 
---import qualified Data.Text as T
 import Data.Maybe
 import Data.Char
 import Text.Read
@@ -20,49 +19,6 @@ import System.IO
 import System.Environment
 
 -- Begin Lex --
-
-{- Old lex
-symbols = ".,"
-padSymbols src =
-  let replacer = (\a -> \b -> T.replace (T.pack [b]) (T.pack [' ',b,' ']) a)
-  in foldl replacer src symbols
-
-isWhitespace = \x -> x `elem` "\n\t "
-
-loserLex :: T.Text -> [Token]
-loserLex src = map toToken (preLex src)
-preLex src =
-  filter
-    (\x -> not $ T.null x)
-    (T.split isWhitespace (padSymbols (T.toLower src)))
-    -- This needs to be reegineered to keep track of location
-
-
-data Token =
-  Keyword String |
-  NumLit Integer |
-  Name String |
-  InvalidToken String
-
-instance Show Token where
-  show (Keyword s) = "<" ++ s ++ ">"
-  show (NumLit x) = show x
-  show (Name s) = show s
-  show (InvalidToken s) = "~" ++ s ++ "~"
-
-keywords = map T.pack ["let", "be", "show", "."]
-
-toToken :: T.Text -> Token
-toToken t
-  | t `elem` keywords =
-      (Keyword (T.unpack t))
-  | isJust (readMaybe (T.unpack t) :: Maybe Integer) =
-      (NumLit (read (T.unpack t) :: Integer))
-  | (T.unpack t) `elem` (map (\x -> [x]) ['a'..'z']) =
-      (Name (T.unpack t))
-  | otherwise =
-      InvalidToken (T.unpack t)
--}
 
 type SrcLoc = (Integer, Integer)
 
@@ -92,7 +48,7 @@ tokenFolder prevs cur =
     []  -> [cur] : prevs
     ' ':_ -> case cur of
       ' ' -> (' ' : prevWord) : (tail prevs)
-      '.' -> "." : prevs
+      --'.' -> "." : prevs
       _   -> [cur] : prevs
     _   -> case cur of
       ' '  -> " " : prevs
@@ -102,11 +58,9 @@ tokenFolder prevs cur =
 tokenize :: String -> [[String]]
 tokenize src =
   let tokens = map (init . foldl tokenFolder [""]) (lines src)
-  --let tokens = map (\x -> init (foldl tokenFolder [""] x)) (lines src)
   in map (reverse . map reverse) tokens
 
 toToken :: String -> SrcLoc -> Token
---toToken s sl = Keyword s sl
 toToken s sl
   | (map toLower s) `elem` keywords = Keyword s sl
   | isJust (readMaybe s :: Maybe Integer) = NumLit s sl
@@ -117,10 +71,11 @@ toToken s sl
 addNumbers :: [[String]] -> [Token]
 addNumbers strs = 
   let incCol t = fromIntegral (length $ value t) + (snd $ loc t)
-      f prevs cur = case prevs of
-        [] -> toToken cur (0, 1) : prevs
-        _  -> toToken cur (0, incCol (head prevs)) : prevs
-  in concat $ map (reverse . foldl f ([]::[Token])) strs
+      f prevs (t, lineNum) = case prevs of
+        [] -> toToken t (lineNum, 1) : prevs
+        _  -> toToken t (lineNum, incCol (head prevs)) : prevs
+      addLines strs = map (\(x, y) -> zip x (cycle [y])) (zip strs [1..])
+  in concat $ map (reverse . foldl f ([]::[Token])) (addLines strs)
 
 chadLex :: String -> [Token]
 chadLex src = addNumbers (tokenize src)
