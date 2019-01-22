@@ -1,30 +1,18 @@
-{-
- 
-Program = ExprList
-ExprList = Expr "." ExprList 
-         | epsilon
-Expr = LetExpr
-     | ShowExpr
-     | NumExpr
-LetExpr = "let" Name "be" Expr
-ShowExpr = "show" Expr
-NumExpr = [0, 1, 2, ...]
-
--}
+module Lex (
+  SrcLoc,
+  chadLex,
+  handleLex,
+  Token (..)
+) where
 
 import Data.Maybe
 import Data.Char
 import Text.Read
-import System.IO
-import System.Environment
 import qualified Control.Exception as E
 
 if' :: Bool -> a -> a -> a
 if' True  x _ = x
 if' False _ y = y
-
-
--- Begin Lex --
 
 data SrcLoc = SrcLoc {line :: Int, col :: Int}
  
@@ -97,31 +85,12 @@ formatInvalidTokens tokens =
   let invalidTokens = filter isInvalidToken tokens
       initString = "The following invalid tokens were found:\n"
       folder x y = x ++ "\"" ++ (value y) ++ "\" at " ++ (show $ loc y) ++ "\n"
-  -- TODO use composition
   in foldl folder initString invalidTokens
 
 handleLex :: [Token] -> IO ()
 handleLex tokens =
   if' (any isInvalidToken tokens)
-    (putStr (formatInvalidTokens tokens))
+    (fail (formatInvalidTokens tokens))
     (putStr "Lexing complete.\n")
 
 -- End Lex --
-
--- Begin Parse --
-
---dummyParse :: [Token] -> IO ()
---dummyParse = 
---  let f = (\x -> case x of
---    Invalid s = print(
-
--- End Parse --
-
-main = do
-  filename <- getArgs
-  handle <- openFile (head filename) ReadMode
-  contents <- hGetContents handle
-  let tokens = chadLex contents
-  --print (tokens)
-  handleLex tokens
-  hClose handle
