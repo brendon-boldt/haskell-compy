@@ -1,8 +1,18 @@
+module Parse (
+  Sym (..),
+  Node (..),
+  parse,
+  showParse,
+) where
+
 import System.IO
 import Data.Array
 import Debug.Trace
 import Data.Maybe
 import Data.List
+import Data.Char
+
+import qualified Lex as Lex
 
 if' :: Bool -> a -> a -> a
 if' True  x _ = x
@@ -71,14 +81,15 @@ gen (SShow x) (Ex y) = map (\sym -> sym $ NonTerm (SShow x, Ex y)) [Ex]
 gen _ _ = []
 
 -- Eventually, this should gel with Lex
-genTerm :: String -> [Sym]
-genTerm "." = map (\x -> x $ Term ".") [Dot]
--- Temp definition
-genTerm c | c `elem` ["a","b","c","d"] = map (\x -> x $ Term "b") [Name, Ex]
-genTerm "be" = map (\x -> x $ Term "be") [Be]
-genTerm "let" = map (\x -> x $ Term "let") [Let]
-genTerm "show" = map (\x -> x $ Term "show") [SShow]
-genTerm n | n `elem` (map show [0..9]) = map (\x -> x $ Term n) [NumLit, Ex]
+--genTerm :: String -> [Sym]
+genTerm :: Lex.Token -> [Sym]
+genTerm (Lex.Name s _) = map (\x -> x $ Term s) [Name, Ex]
+genTerm (Lex.Keyword s _)
+  | s == "." = map (\x -> x $ Term ".") [Dot]
+  | (map toLower s) == "be" = map (\x -> x $ Term "be") [Be]
+  | (map toLower s) == "let" = map (\x -> x $ Term "let") [Let]
+  | (map toLower s) == "show" = map (\x -> x $ Term "show") [SShow]
+genTerm (Lex.NumLit n _) = map (\x -> x $ Term n) [NumLit, Ex]
 
 -- http://christos-c.com/treeviewer/#
 input = "let a be 4 . let b be let a be 3 . let d be show c ."
@@ -98,20 +109,21 @@ build arr l = do
   let newArr = array (0, rowLen-1) (zip [0..rowLen] res) : arr
   if' (rowLen <= 1) newArr (build newArr (l+1))
 
-parse src = do
-  let toks = words src
-  let nWords = length toks
-  let one = array (0, nWords-1) (zip [0..nWords-1] (map genTerm toks))
-  build [one] 2
-  --let retVal = if' (rowLen == 1) newArr (build newArr (l+1))
-  --if' (rowLen <= 0) [] retVal
+filterParseable :: [Lex.Token] -> [Lex.Token]
+filterParseable tokens = 
+  let shouldKeep (Lex.Whitespace _ _) = False
+      shouldKeep _ = True
+  in filter shouldKeep tokens
+
+parse :: [Lex.Token] -> Maybe Sym
+parse allTokens = do
+  let tokens = filterParseable allTokens
+  let nWords = length tokens
+  let terminals = array (0, nWords-1) (zip [0..nWords-1] (map genTerm tokens))
+  let res = build [terminals] 2
+  -- TODO make this search for start symbol
+  if' (null (head res ! 0)) Nothing (Just $ head $ head res ! 0)
 
 showParse arr = do
   let showRow row = foldl (\s i -> s ++ (show $ row!i) ++ "\t") "" [0..snd $ bounds row]
   foldl (\s r -> s ++ (showRow r) ++ "\n") "" arr
-
-main = do
-  --putStr $ showParse $ parse "a a c d c d"
-  --putStr $ showParse $ parse input
-  let str = show $ (\x -> head $ head x ! 0) $ parse input
-  putStr $ "(" ++ str ++ ")\n"
