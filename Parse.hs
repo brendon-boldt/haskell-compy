@@ -18,10 +18,10 @@ if' :: Bool -> a -> a -> a
 if' True  x _ = x
 if' False _ y = y
 
-data Node = Term String | NonTerm (Sym, Sym)
+data Node = Term Lex.Token | NonTerm (Sym, Sym)
 
 instance Show Node where
-  show (Term s) = "(" ++ s ++ ")"
+  show (Term t) = "(" ++ (Lex.value t) ++ ")"
   show (NonTerm (l, r)) = "(" ++ (show l) ++ ")(" ++ (show r) ++ ")"
 
 data Sym = S Node |
@@ -36,7 +36,6 @@ data Sym = S Node |
   Let Node |
   SShow Node |
   NumLit Node
-  --deriving (Show, Eq)
   deriving (Show)
 
 {-
@@ -49,50 +48,30 @@ Expr = "let" Nm "be" Expr
      | "show" Expr
      | NumLit
      | Nm
-
-Transformed
-
---S = StL
-StL, S = St StL
-St, StL, S = Ex Dot
-Ex = Let ExL1
-ExL1 = Nm ExL2
-ExL2 = Be Expr
-Ex = Show Ex
-
-Dot = "."
-Nm, Ex = ['a'..'z']
-Be = "be"
-Let = "let"
-SShow = "show"
-NumLit, Ex = [0..]
 -}
 
 --instance Show Sym where
 --  show (S n) = "S" ++ (show n) ++ ""
 
 gen :: Sym -> Sym -> [Sym]
-gen (St x) (StL y) = map (\sym -> sym $ NonTerm (St x, StL y)) [S, StL]
-gen (Ex x) (Dot y) = map (\sym -> sym $ NonTerm (Ex x, Dot y)) [S, St, StL]
-gen (Let x) (ExLet1 y) = map (\sym -> sym $ NonTerm (Let x, ExLet1 y)) [Ex]
-gen (Name x) (ExLet2 y) = map (\sym -> sym $ NonTerm (Name x, ExLet2 y)) [ExLet1]
-gen (Be x) (Ex y) = map (\sym -> sym $ NonTerm (Be x, Ex y)) [ExLet2]
-gen (SShow x) (Ex y) = map (\sym -> sym $ NonTerm (SShow x, Ex y)) [Ex]
+gen x@(St _)    y@(StL _)    = map ($ NonTerm (x, y)) [S, StL]
+gen x@(Ex _)    y@(Dot _)    = map ($ NonTerm (x, y)) [S, St, StL]
+gen x@(Let _)   y@(ExLet1 _) = map ($ NonTerm (x, y)) [Ex]
+gen x@(Name _)  y@(ExLet2 _) = map ($ NonTerm (x, y)) [ExLet1]
+gen x@(Be _)    y@(Ex _)     = map ($ NonTerm (x, y)) [ExLet2]
+gen x@(SShow _) y@(Ex _)     = map ($ NonTerm (x, y)) [Ex]
 gen _ _ = []
 
--- Eventually, this should gel with Lex
---genTerm :: String -> [Sym]
 genTerm :: Lex.Token -> [Sym]
-genTerm (Lex.Name s _) = map (\x -> x $ Term s) [Name, Ex]
-genTerm (Lex.Keyword s _)
-  | s == "." = map (\x -> x $ Term ".") [Dot]
-  | (map toLower s) == "be" = map (\x -> x $ Term "be") [Be]
-  | (map toLower s) == "let" = map (\x -> x $ Term "let") [Let]
-  | (map toLower s) == "show" = map (\x -> x $ Term "show") [SShow]
-genTerm (Lex.NumLit n _) = map (\x -> x $ Term n) [NumLit, Ex]
+genTerm t@(Lex.Name _ _) = map ($ Term t) [Name, Ex]
+genTerm t@(Lex.Keyword s _)
+  | s == "." = map (\x -> x $ Term t) [Dot]
+  | (map toLower s) == "be" = map ($ Term t) [Be]
+  | (map toLower s) == "let" = map ($ Term t) [Let]
+  | (map toLower s) == "show" = map ($ Term t) [SShow]
+genTerm t@(Lex.NumLit _ _) = map ($ Term t) [NumLit, Ex]
 
 -- http://christos-c.com/treeviewer/#
-input = "let a be 4 . let b be let a be 3 . let d be show c ."
 
 genFromList :: [Sym] -> [Sym] -> [Sym]
 genFromList xs ys = concat [gen x y | x <- xs, y <- ys]
@@ -115,15 +94,21 @@ filterParseable tokens =
       shouldKeep _ = True
   in filter shouldKeep tokens
 
-parse :: [Lex.Token] -> Maybe Sym
+--parse :: [Lex.Token] -> Maybe Sym
+parse :: [Lex.Token] -> [Array Int [Sym]]
 parse allTokens = do
   let tokens = filterParseable allTokens
   let nWords = length tokens
   let terminals = array (0, nWords-1) (zip [0..nWords-1] (map genTerm tokens))
   let res = build [terminals] 2
   -- TODO make this search for start symbol
-  if' (null (head res ! 0)) Nothing (Just $ head $ head res ! 0)
+  --if' (null (head res ! 0)) Nothing (Just $ head $ head res ! 0)
+  res
 
 showParse arr = do
+  let showRow row = foldl (\s i -> s ++ (show $ row!i) ++ "\n") "" [0..snd $ bounds row]
+  foldl (\s r -> s ++ (showRow r) ++ "\n") "" arr
+
+oldShowParse arr = do
   let showRow row = foldl (\s i -> s ++ (show $ row!i) ++ "\t") "" [0..snd $ bounds row]
   foldl (\s r -> s ++ (showRow r) ++ "\n") "" arr

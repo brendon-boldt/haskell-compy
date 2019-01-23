@@ -17,5 +17,6 @@ main = do
   --putStr (show tokens)
   handleLex tokens
   let parseRes = parse tokens
-  putStrLn $ if' (isJust parseRes) ("("++(show (fromJust parseRes))++")") "Parse failed."
+  --putStrLn $ if' (isJust parseRes) ("("++(show (fromJust parseRes))++")") "Parse failed."
+  putStrLn $ showParse parseRes
   hClose handle
