@@ -3,14 +3,17 @@ module Parse (
   Node (..),
   parse,
   showParse,
+  findError,
 ) where
 
 import System.IO
 import Data.Array
-import Debug.Trace
 import Data.Maybe
 import Data.List
 import Data.Char
+import qualified Data.Set as Set
+
+import Debug.Trace
 
 import qualified Lex as Lex
 
@@ -77,9 +80,9 @@ genFromList :: [Sym] -> [Sym] -> [Sym]
 genFromList xs ys = concat [gen x y | x <- xs, y <- ys]
 
 build' :: [Array Int [Sym]] -> Int -> Int -> [Sym]
-build' arr l s = do
-  let f = (\p -> genFromList (arr !! (l-p-1) ! s) (arr !! (p-1) ! (s+p)))
-  foldl (\x y -> f y ++ x) [] [1..l-1]
+build' arr l s =
+  let f p = genFromList (arr !! (l-p-1) ! s) (arr !! (p-1) ! (s+p))
+  in concatMap f [1..l-1]
 
 build :: [Array Int [Sym]] -> Int -> [Array Int [Sym]]
 build arr l = do
@@ -112,3 +115,43 @@ showParse arr = do
 oldShowParse arr = do
   let showRow row = foldl (\s i -> s ++ (show $ row!i) ++ "\t") "" [0..snd $ bounds row]
   foldl (\s r -> s ++ (showRow r) ++ "\n") "" arr
+
+-- In random places, should I have used recursion instead of range + zip?
+
+isStatement :: Sym -> Bool
+isStatement (St _) = True
+isStatement (StL _) = True
+isStatement _ = False
+
+searchInRow :: Array Int [Sym] -> Set.Set Int -> Int -> Int -> Set.Set Int
+searchInRow row tSet i _ | (snd $ bounds $ row) < i = tSet
+searchInRow row tSet i n = do
+  let hasStatement = any isStatement (row ! i)
+  let filtered = Set.filter (\x -> (x < i) || (x >= (i+n))) tSet
+  if hasStatement 
+    --then searchInRow row (trace (show n) filtered) (i+n) n
+    then searchInRow row filtered (i+n) n
+    else searchInRow row tSet     (i+1) n
+
+findError' :: [Array Int [Sym]] -> Set.Set Int -> Int -> Set.Set Int
+--findError' _ tSet n | (n == 0) || (Set.null tSet) = tSet
+findError' [] tSet _ = tSet
+findError' (row:table) tSet n = do
+  let filtered = searchInRow row tSet 0 n
+  findError' table filtered (n-1)
+
+
+findError table = do
+  let nTokens = length table
+  let tSet = Set.fromDistinctAscList [0..nTokens-1]
+  findError' table tSet nTokens
+
+
+{- Gameplan for detecting errors.
+ - 
+ - An "error" will be any string of tokens that cannot be resolved to be part
+ - of a statement.
+ - Store the index of tokens in a set and remove from the set as we find tokens
+ - that are part of a valid statement.
+ - Optimize! LATER!
+ -} 

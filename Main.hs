@@ -2,8 +2,8 @@ import System.IO
 import System.Environment
 import Data.Maybe
 
-import Lex
-import Parse
+import qualified Lex as Lex
+import qualified Parse as Parse
 
 if' :: Bool -> a -> a -> a
 if' True  x _ = x
@@ -13,10 +13,11 @@ main = do
   filename <- getArgs
   handle <- openFile (head filename) ReadMode
   contents <- hGetContents handle
-  let tokens = chadLex contents
+  let tokens = Lex.chadLex contents
   --putStr (show tokens)
-  handleLex tokens
-  let parseRes = parse tokens
+  Lex.handleLex tokens
+  let parseRes = Parse.parse tokens
   --putStrLn $ if' (isJust parseRes) ("("++(show (fromJust parseRes))++")") "Parse failed."
-  putStrLn $ showParse parseRes
+  putStrLn $ Parse.showParse parseRes
+  putStrLn $ show $ Parse.findError parseRes
   hClose handle
