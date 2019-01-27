@@ -16,8 +16,5 @@ main = do
   let tokens = Lex.chadLex contents
   --putStr (show tokens)
   Lex.handleLex tokens
-  let parseRes = Parse.parse tokens
-  --putStrLn $ if' (isJust parseRes) ("("++(show (fromJust parseRes))++")") "Parse failed."
-  putStrLn $ Parse.showParse parseRes
-  putStrLn $ show $ Parse.findError parseRes
+  print $ Parse.parse tokens
   hClose handle
