@@ -18,11 +18,12 @@ if' True  x _ = x
 if' False _ y = y
 
 data SrcLoc = SrcLoc {line :: Int, col :: Int}
+  deriving (Eq, Ord)
  
 instance Show SrcLoc where
   show (SrcLoc line col) = (show $ line) ++ ":" ++ (show $ col)
 
-data Token = Token TType TData
+data Token = Token {ttype :: TType, tdata :: TData}
 
 data TData = TData {value :: String, loc :: SrcLoc}
 
@@ -31,6 +32,7 @@ data TType =
   NumLit |
   Name |
   Whitespace |
+  EOF |
   InvalidToken 
     deriving (Show, Eq)
 
@@ -45,6 +47,7 @@ instance Show Token where
   show (Token Name (TData s sl)) = appendLoc (show s) sl
   show (Token Whitespace (TData s sl)) = appendLoc ("[ws]") sl
   show (Token InvalidToken (TData s sl)) = appendLoc ("~" ++ s ++ "~") sl
+  show (Token Lex.EOF (TData _ sl)) = appendLoc ("EOF") sl
 
 --tokenFolder :: [String] -> Char -> [String]
 tokenFolder :: Char -> [String] -> [String]
@@ -87,8 +90,16 @@ addNumbers strs =
       addLines strs = map (\(x, y) -> zip x (cycle [y])) (zip strs [1..])
   in concat $ map (reverse . foldl f ([]::[Token])) (addLines strs)
 
+addEOF :: [Token] -> [Token]
+addEOF tokens = do
+  let lt = last tokens
+  let eofCol = (col $ loc $ tdata lt) + (length $ value $ tdata lt)
+  let eofData = TData "" (SrcLoc (line $ loc $ tdata lt) eofCol)
+  let eofToken = Token Lex.EOF eofData
+  tokens ++ [eofToken]
+
 chadLex :: String -> [Token]
-chadLex src = addNumbers (tokenize src)
+chadLex src = addEOF $ addNumbers (tokenize src)
 
 isInvalidToken :: Token -> Bool
 isInvalidToken (Token InvalidToken _) = True
