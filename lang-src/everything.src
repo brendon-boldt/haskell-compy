@@ -1,0 +1,4 @@
+Let b be 1 + 2 - 3 * 4 / 5.
+Let a be show 0.
+When a is 4, f does `show a. given a is a-1, do f.'.
+Given a is 4, do f.
