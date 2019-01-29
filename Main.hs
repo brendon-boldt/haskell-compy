@@ -16,5 +16,5 @@ main = do
   let tokens = Lex.chadLex contents
   --putStr (show tokens)
   Lex.handleLex tokens
-  print $ length $ Parse.parse tokens
+  putStrLn $ Parse.showPS $ head $ Parse.parse tokens
   hClose handle

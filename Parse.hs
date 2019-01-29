@@ -2,6 +2,7 @@ module Parse (
   Sym (..),
   Node (..),
   parse,
+  showPS
 ) where
 
 import Debug.Trace
@@ -10,48 +11,81 @@ import Data.Char (toLower)
 
 import qualified Lex as Lex
 
-data Sym = S | StL | St | Expr | Nm | NumLit |
+data Sym = S | StL | St | Expr | Nm | NumLit | Val | 
+  ProcCall | ProcDef | Def | Cond |
   T Lex.TType String |
   T' Lex.TType
   deriving (Show)
 
+
+{- Grammar -
+
+S = StL EOF
+StL = St StL
+    | St
+St = Expr "."
+   | ProcDef "."
+   | ProcCall "."
+Expr = "let" Name "be" Expr
+     | "show" Expr
+     | Val
+     | Val "+" Expr
+     | Val "-" Expr
+Val = Name | NumLit
+
+ProcDef = "when" Cond Name "does" Def
+        | Name "does" Def
+Def = "`" StL "'"
+    | Name
+Cond = Expr "is" Expr
+     | Expr "is" "greater" "than" Expr
+     | Expr "is" "less" "than" Expr
+
+ProcCall = "given" Name "is" Expr "do" Def
+         | "do" Def
+
+-  End Grammar -}
+
+--type LKW = Lex.Keyword
+lKW = T Lex.Keyword
+lS = T Lex.Symbol
+
+-- TODO use a (hash)map
+getProds :: Sym -> [[Sym]]
+getProds S = [[StL, T' Lex.EOF]]
+getProds StL = [[St, StL],
+                [St]]
+getProds St = [[Expr, lS "."],
+               [ProcDef, lS "."],
+               [ProcCall, lS "."]]
+getProds Expr = [[lKW "let", T' Lex.Name, lKW "be", Expr],
+                 [lKW "show", Expr],
+                 [Val, lS "+", Expr],
+                 [Val, lS "-", Expr],
+                 [Val, lS "*", Expr],
+                 [Val, lS "/", Expr],
+                 [Val]]
+getProds Val = [[T' Lex.Name],
+                [T' Lex.NumLit]]
+getProds ProcDef = [[lKW "when", Cond, lS ",", T' Lex.Name, lKW "does", Def],
+                    [T' Lex.Name, lKW "does", Def]]
+getProds Def = [[lS "`", StL, lS "'"],
+                [T' Lex.Name]]
+getProds Cond = [[Expr, lKW "is", Expr],
+                 [Expr, lKW "is", lKW "less", lKW "than", Expr],
+                 [Expr, lKW "is", lKW "greater", lKW "than", Expr]]
+getProds ProcCall =
+  [[lKW "given", T' Lex.Name, lKW "is", Expr, lS ",", lKW "do", Def],
+   [lKW "do",  Def]]
+
 data Node = Node Sym [Node] | Leaf Sym Lex.Token
-  --deriving (Show)
 
 instance Show Node where
   show (Leaf (T ttype _) (Lex.Token _ td)) =
     "("++(show ttype)++" "++(Lex.value td)++")"
   show (Leaf (T' ttype) (Lex.Token _ td)) =
     "("++(show ttype)++" "++(Lex.value td)++")"
-  show (Node s ns) = " ("++(show s)++" "++(concatMap show ns)++")"
-
--- Make EOFError better; add syms eventually
---data Error = Error Lex.Token | NoError | EOFError
---  deriving (Show)
---
---instance Eq Error where
---  NoError == NoError = True
---  EOFError == EOFError = True
---  (Error (Lex.Token _ x)) == (Error (Lex.Token _ y)) =
---    (Lex.loc x) == (Lex.loc y)
---  _ == _ = False
---
---instance Ord Error where
---  compare (Error (Lex.Token _ x)) (Error (Lex.Token _ y)) =
---    compare (Lex.loc x) (Lex.loc y)
---  compare NoError NoError = EQ
---  compare NoError _ = LT
---  compare _ NoError = GT
---  compare EOFError EOFError = EQ
---  compare _ EOFError = LT
---  compare EOFError _ = GT
-
---data Error =
---  TokenError Sym Lex.Token |
---  EOFError Sym |
---  SymbolError Sym Error
---  --SymbolError Sym Lex.Token
---    deriving (Show)
+  show (Node s ns) = "("++(show s)++" "++(concatMap show ns)++")"
 
 data Error = Error | NoError
   deriving (Show, Eq)
@@ -70,19 +104,6 @@ data PS = PS { tokens :: [Lex.Token],
                lastToken :: Lex.Token}
   deriving (Show)
 
---type LKW = Lex.Keyword
-lKW = Lex.Keyword
-
--- TODO use a (hash)map
-getProds :: Sym -> [[Sym]]
-getProds S = [[StL, T' Lex.EOF]]
-getProds StL = [[St, StL],
-                [St]]
-getProds St = [[Expr, T lKW "."]]
-getProds Expr = [[T lKW "let", T' Lex.Name, T lKW "be", Expr],
-                 [T lKW "show", Expr],
-                 [T' Lex.NumLit],
-                 [T' Lex.Name]]
 
 isNoError :: Error -> Bool
 isNoError NoError = True
@@ -109,14 +130,11 @@ addTerm ps s@(T _ _) = PS (tail $ tokens ps) ((Leaf s (head $ tokens ps)): (node
 addTerm ps s@(T' _) = PS (tail $ tokens ps) ((Leaf s (head $ tokens ps)): (nodes ps)) (Parse.error ps) (lastToken ps)
 
 addNodesFromTo :: PS -> PS -> PS
---addNodesFromTo x y = PS (tokens y) ((nodes y) ++ (nodes x)) []
 addNodesFromTo x y = PS (tokens y) ((nodes y) ++ (nodes x)) (Parse.error y) (lastToken y)
 
 completeProd :: Sym -> PS -> PS
---completeProd s ps = PS (tokens ps) [Node s (reverse $ nodes ps)] (trace (show (Parse.error ps)) (Parse.error ps))
 completeProd s ps = if isValidPS ps
   then PS (tokens ps) [Node s (reverse $ nodes ps)] NoError (lastToken ps)
-  --else PS (tokens ps) [] (Parse.error (trace (show $ Parse.error ps) ps))
   else PS (tokens ps) [] (Parse.error ps) (lastToken ps)
 
 isTokenTerm :: Lex.Token -> Sym -> Bool
@@ -129,19 +147,14 @@ isEOFToken (Lex.Token Lex.EOF _) = True
 isEOFToken _ = False
 
 tryProd :: PS -> [Sym] -> [PS]
--- Not sure about this line
---tryProd ps _ | not $ isValidPS ps = [PS (tokens ps) [] (Error (head $ tokens ps))]
 tryProd ps _ | not $ isValidPS ps = [ps]
 tryProd ps [] = [ps]
 -- Why do I have to repeat this?
 tryProd ps (sh@(T' _):ss)
-  -- | null $ tokens ps           = [PS [] [] Error]
   | isTokenTerm (head $ tokens ps) sh = tryProd (addTerm ps sh) ss
   | isEOFToken (head $ tokens ps) = [PS [] [] Error (head $ tokens ps)]
-  -- | otherwise = [PS (tokens ps) [] [TokenError sh (head $ tokens ps)]] -- Do I need to re-get the tokens?
-  | otherwise = [setError ps (head $ tokens ps)] -- Do I need to re-get the tokens?
+  | otherwise = [setError ps (head $ tokens ps)]
 tryProd ps (sh@(T _ _):ss)
-  -- | null $ tokens ps           = [PS [] [] Error]
   | isTokenTerm (head $ tokens ps) sh = tryProd (addTerm ps sh) ss
   | isEOFToken (head $ tokens ps) = [PS [] [] Error (head $ tokens ps)]
   | otherwise = [setError ps (head $ tokens ps)]
@@ -155,12 +168,9 @@ tryProd ps (sh:ss) = do
 
 -- TODO combine with parseSym
 trySym :: PS -> [[Sym]] -> [PS]
---trySym tokens prods = filter isValidPS $ concatMap (tryProd tokens) prods
---trySym ps prods = filter isValidPS $ concatMap (tryProd ps) prods
 trySym ps prods = concatMap (tryProd ps) prods
 
 parseSym :: PS -> Sym -> [PS]
---parseSym ps sym | not $ isValidPS ps = [PS (tokens ps) [] (Error (head $ tokens ps))]
 parseSym ps sym | not $ isValidPS ps = [ps]
 parseSym ps sym = do
   let attempts = map (completeProd sym) (trySym ps (getProds sym))
@@ -174,14 +184,19 @@ parseSym ps sym = do
 filterParseable :: [Lex.Token] -> [Lex.Token]
 filterParseable tokens = 
   let shouldKeep (Lex.Token Lex.Whitespace _) = False
+      shouldKeep (Lex.Token Lex.Comment _) = False
       shouldKeep _ = True
   in filter shouldKeep tokens
 
---parse :: [Lex.Token] -> [PS]
+parse :: [Lex.Token] -> [PS]
 parse lexTokens = do 
   let parseable = filterParseable lexTokens
   let allStates = parseSym (PS parseable [] NoError (head parseable)) S
-  --length $ nodes $ head $ filter (null . tokens) allStates
   if any isValidPS allStates
     then filter (null . tokens) allStates
     else allStates
+
+showPS :: PS -> String
+showPS ps | Parse.error ps == Error = 
+  "Parse failed at " ++ (show $ lastToken ps)
+showPS ps = show $ head $ nodes ps

@@ -7,9 +7,11 @@ module Lex (
   TType (..),
 ) where
 
+import Debug.Trace
+
 import Data.Maybe
 import Data.Char
-import Text.Read
+import Text.Read (readMaybe)
 import Data.Typeable
 import qualified Control.Exception as E
 
@@ -29,43 +31,47 @@ data TData = TData {value :: String, loc :: SrcLoc}
 
 data TType =
   Keyword |
+  Symbol |
   NumLit |
   Name |
   Whitespace |
+  Comment |
   EOF |
   InvalidToken 
     deriving (Show, Eq)
 
-keywords = ["let", "be", "show", "."]
+keywords = ["let", "be", "show", "is", "does", "do", "given",
+            "greater", "less", "than", "when"]
+symbols =  "*/,.+-'`()"
+
 isWhitespace s = all (==' ') s
 
 appendLoc s sl = s ++ "@" ++ (show sl)
 
 instance Show Token where
+  show (Token Comment (TData s sl)) = appendLoc s sl
   show (Token Keyword (TData s sl)) = appendLoc ("<" ++ s ++ ">") sl
+  show (Token Symbol (TData s sl)) = appendLoc ("<" ++ s ++ ">") sl
   show (Token NumLit (TData x sl)) = appendLoc (show x) sl
   show (Token Name (TData s sl)) = appendLoc (show s) sl
   show (Token Whitespace (TData s sl)) = appendLoc ("[ws]") sl
   show (Token InvalidToken (TData s sl)) = appendLoc ("~" ++ s ++ "~") sl
   show (Token Lex.EOF (TData _ sl)) = appendLoc ("EOF") sl
 
---tokenFolder :: [String] -> Char -> [String]
 tokenFolder :: Char -> [String] -> [String]
---tokenFolder prevs cur =
 tokenFolder cur prevs =
   let prevWord = (head prevs)
   in case prevWord of
     []  -> [cur] : prevs
     ' ':_ -> case cur of
       ' ' -> (' ' : prevWord) : (tail prevs)
-      --'.' -> "." : prevs
       _   -> [cur] : prevs
-    "." -> [cur] : prevs
+    s:_ | s `elem` symbols -> [cur] : prevs
     _   -> case cur of
       ' '  -> " " : prevs
-      '.' -> "." : prevs
+      s | s `elem` symbols -> [s] : prevs
       char -> (char : prevWord) : (tail prevs)
-    
+
 tokenize :: String -> [[String]]
 tokenize src =
   --let tokens = map (init . foldl tokenFolder [""]) (lines src)
@@ -75,7 +81,9 @@ tokenize src =
 
 toToken :: String -> SrcLoc -> Token
 toToken s sl
+  | null s = Token Whitespace (TData "" sl)
   | (map toLower s) `elem` keywords = Token Keyword (TData s sl)
+  | (head s) `elem` symbols = Token Symbol (TData s sl)
   | isJust (readMaybe s :: Maybe Int) = Token NumLit (TData s sl)
   | s `elem` (map (\x -> [x]) ['a'..'z']) = Token Name (TData s sl)
   | isWhitespace s = Token Whitespace (TData s sl)
@@ -98,8 +106,28 @@ addEOF tokens = do
   let eofToken = Token Lex.EOF eofData
   tokens ++ [eofToken]
 
+getTDValue :: Token -> String
+getTDValue (Token _ td) = value td
+
+getTDLoc :: Token -> SrcLoc
+getTDLoc (Token _ td) = loc td
+
+commentFolder :: Token -> [Token] -> [Token]
+commentFolder t prevs@(ph@(Token Comment _):pt)
+  | (head $ getTDValue ph) == '(' = t : prevs
+  | otherwise = (Token Comment (TData ((getTDValue t) ++ (getTDValue ph)) (getTDLoc t))) : pt
+commentFolder t@(Token _ td) (ph:pt) | (value td) == ")" = 
+    (Token Comment (TData ")" (loc td))) : pt
+commentFolder t prevs = t : prevs
+
+squashComments :: [Token] -> [Token]
+squashComments tokens = foldr commentFolder [] tokens
+
 chadLex :: String -> [Token]
-chadLex src = addEOF $ addNumbers (tokenize src)
+chadLex src = do
+  let allTokens = addEOF $ addNumbers (tokenize src)
+  let squashed = squashComments allTokens
+  squashed
 
 isInvalidToken :: Token -> Bool
 isInvalidToken (Token InvalidToken _) = True
@@ -111,6 +139,8 @@ formatInvalidTokens tokens =
       initString = "The following invalid tokens were found:\n"
       folder x (Token _ y) = x ++ "\"" ++ (value y) ++ "\" at " ++ (show $ loc y) ++ "\n"
   in foldl folder initString invalidTokens
+
+-- TODO catch unmatched comment
 
 handleLex :: [Token] -> IO ()
 handleLex tokens =
