@@ -2,6 +2,7 @@ module Parse (
   --Sym (..),
   --Node (..),
   parse,
+  PS (nodes),
   showPS
 ) where
 
@@ -12,6 +13,7 @@ import Data.Char (toLower)
 import qualified Lex as Lex
 import qualified Grammar as G
 
+-- TODO try ambiguous grammar
 
 data Error = Error | NoError
   deriving (Show, Eq)

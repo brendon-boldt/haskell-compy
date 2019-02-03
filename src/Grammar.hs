@@ -1,13 +1,13 @@
 module Grammar (
   Sym (..),
   Node (..),
-  getProds,
+  getProds
 ) where
 
 import qualified Lex as Lex
 
-data Sym = S | StL | St | Expr | Nm | NumLit | Val | 
-  ProcCall | ProcDef | Def | Cond |
+data Sym = S | StL | St | Expr | Val | 
+  ProcCall | ProcDef | Def | Cond | BinOp |
   T Lex.TType String |
   T' Lex.TType
   deriving (Show)
@@ -54,11 +54,10 @@ getProds St = [[Expr, lS "."],
                [ProcCall, lS "."]]
 getProds Expr = [[lKW "let", T' Lex.Name, lKW "be", Expr],
                  [lKW "show", Expr],
-                 [Val, lS "+", Expr],
-                 [Val, lS "-", Expr],
-                 [Val, lS "*", Expr],
-                 [Val, lS "/", Expr],
+                 --[Val, lS "+", Expr],
+                 [Val, BinOp, Expr],
                  [Val]]
+getProds BinOp = [[lS "+"], [lS "-"], [lS "*"], [lS "/"]]
 getProds Val = [[T' Lex.Name],
                 [T' Lex.NumLit]]
 getProds ProcDef = [[lKW "when", Cond, lS ",", T' Lex.Name, lKW "does", Def],

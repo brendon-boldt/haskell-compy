@@ -79,13 +79,17 @@ tokenize src =
   --in map (reverse . map reverse) tokens
   in tokens
 
+isName (a:b:[]) = (a `elem` "fip") && (b `elem` ['A'..'Z'])
+isName _ = False
+
 toToken :: String -> SrcLoc -> Token
 toToken s sl
   | null s = Token Whitespace (TData "" sl)
   | (map toLower s) `elem` keywords = Token Keyword (TData s sl)
   | (head s) `elem` symbols = Token Symbol (TData s sl)
   | isJust (readMaybe s :: Maybe Int) = Token NumLit (TData s sl)
-  | s `elem` (map (\x -> [x]) ['a'..'z']) = Token Name (TData s sl)
+  -- | s `elem` (map (\x -> [x]) ['a'..'z']) = Token Name (TData s sl)
+  | isName s = Token Name (TData s sl)
   | isWhitespace s = Token Whitespace (TData s sl)
   | otherwise = Token InvalidToken (TData s sl)
 
