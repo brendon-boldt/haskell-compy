@@ -5,6 +5,7 @@ import Data.Maybe
 import qualified Lex as Lex
 import qualified Parse as Parse
 import qualified AST as AST
+import qualified Asm as Asm
 --import qualified Grammar as G
 
 if' :: Bool -> a -> a -> a
@@ -22,4 +23,5 @@ main = do
   --putStrLn $ Parse.showPS cst
   let ast = AST.buildAST (head $ Parse.nodes cst)
   putStrLn $ show ast
+  Asm.generateAsm ast
   hClose handle
