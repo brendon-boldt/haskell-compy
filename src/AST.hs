@@ -1,11 +1,17 @@
 module AST (
   Node (..),
+  Sym (..),
+  Value (..),
   --Sym (..)
   buildAST
 ) where
 
 import qualified Grammar as G 
 import qualified Lex as Lex
+
+if' :: Bool -> a -> a -> a
+if' True  x _ = x
+if' False _ y = y
 
 data Node = Node Sym [Node] |
   Leaf Value |
@@ -16,15 +22,20 @@ data DType = IntType | FloatType | ProcType
   deriving (Show, Eq)
 
 --data Value = FloatVal Double | IntVal Int | NameVal String
-data Value = IntVal Int | NameVal DType String
+data Value =
+  IntVal Int |
+  IntExpr Int |
+  NameVal DType String |
+  NameExpr DType String
 
 instance Show Value where
   --show (FloatVal x) = "FloatVal" ++ (show x)
   show (IntVal x) = "IntVal " ++ (show x)
+  show (IntExpr x) = "IntExpr " ++ (show x)
   show (NameVal _ s) = "NameVal " ++ s
+  show (NameExpr _ s) = "NameExpr " ++ s
 
-data Sym = 
-  Program |
+data Sym = Program | 
   LetExpr | ShowExpr | 
   DivExpr | MulExpr | SubExpr | AddExpr
     deriving (Show)
@@ -39,18 +50,20 @@ instance Show Node where
 isLet (G.Leaf (G.T _ val) _) = val == "let"
 isShow (G.Leaf (G.T _ val) _) = val == "show"
 
-makeLeaf :: G.Node -> Node
-makeLeaf (G.Leaf _ (Lex.Token Lex.Name td)) =
+makeLeaf :: G.Node -> Bool -> Node
+makeLeaf (G.Leaf _ (Lex.Token Lex.Name td)) isExpr =
   Leaf $ NameVal dtype val
-    where val = (Lex.value td)
+    where nameType = if' isExpr NameExpr NameVal
+          val = (Lex.value td)
           dtype = case val of
             'i':_ -> IntType
             'f':_ -> FloatType
             'p':_ -> ProcType
           
-makeLeaf (G.Leaf _ (Lex.Token Lex.NumLit td)) =
-  Leaf $ IntVal $ (read $ Lex.value td :: Int)
-makeLeaf _ = Leaf (IntVal 32)
+makeLeaf (G.Leaf _ (Lex.Token Lex.NumLit td)) isExpr =
+  Leaf $ dtype $ (read $ Lex.value td :: Int)
+    where dtype = if' isExpr IntExpr IntVal
+--makeLeaf _ = Leaf (IntVal 32)
 
 toBinExpr :: G.Node -> Sym
 toBinExpr (G.Leaf _ (Lex.Token _ td)) 
@@ -69,13 +82,14 @@ applyProd (G.Node G.St (n0:_)) = applyProd n0
 applyProd (G.Node G.Expr (gl@(G.Leaf _ _):gls))
   | isLet gl = [Node LetExpr (concatMap applyProd [head gls, gls !! 2])] -- It feels absolutely disgusting to write this line
   | isShow gl = [Node ShowExpr (concatMap applyProd gls)]
-applyProd (G.Node G.Expr ((G.Node G.Val val):[])) = [makeLeaf $ head val]
 applyProd (G.Node G.Expr ns@(n0:(G.Node G.BinOp op):n1:[])) =
   [Node (toBinExpr $ head op) (concatMap applyProd [n0, n1])]
+--applyProd (G.Node G.Expr ((G.Node G.Val val):[])) = [makeLeaf $ head val]
+applyProd (G.Node G.Expr ((G.Node G.Val val):[])) = [makeLeaf (head val) True]
 
-applyProd (G.Node G.Val val) = [makeLeaf $ head val]
+applyProd (G.Node G.Val val) = [makeLeaf (head val) False]
 
-applyProd gl@(G.Leaf (G.T' Lex.Name) _) = [makeLeaf gl]
+applyProd gl@(G.Leaf (G.T' Lex.Name) _) = [makeLeaf gl False]
 
 --applyProd (G.Node gs ns) = [Wrapper gs (concatMap applyProd ns)]
 --applyProd n@(G.Leaf _ _) = [ValWrapper n]
