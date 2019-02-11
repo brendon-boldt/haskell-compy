@@ -43,28 +43,36 @@ updateLastToken :: PS -> Lex.Token -> PS
 updateLastToken ps t = 
   if ((lastToken ps) > t)
     then ps
-    else PS (tokens ps) (nodes ps) (Parse.error ps) t
+    --else PS (tokens ps) (nodes ps) (Parse.error ps) t
+    else ps { lastToken = t }
 
 setError :: PS -> Lex.Token -> PS
 setError ps t = 
-  let newPS = PS (tokens ps) (nodes ps) Error 
-  in if (lastToken ps) > t
-    then newPS (lastToken ps)
-    else newPS t
+  --let newPS = PS (tokens ps) (nodes ps) Error 
+  --let newPS = ps { Parse.error = Error }
+  --in if (lastToken ps) > t
+  if (lastToken ps) > t
+    then ps { Parse.error = Error }
+    else ps { Parse.error = Error, lastToken = t }
 
 
 addTerm :: PS -> G.Sym -> PS
 addTerm ps s@(G.T _ _) = addTerm' ps s
 addTerm ps s@(G.T' _) = addTerm' ps s
-addTerm' ps s = PS (tail $ tokens ps) ((G.Leaf s (head $ tokens ps)): (nodes ps)) (Parse.error ps) (lastToken ps)
+--addTerm' ps s = PS (tail $ tokens ps) ((G.Leaf s (head $ tokens ps)): (nodes ps)) (Parse.error ps) (lastToken ps)
+addTerm' ps s = ps { tokens = (tail $ tokens ps)
+                   , nodes = ((G.Leaf s (head $ tokens ps)): (nodes ps)) }
 
 addNodesFromTo :: PS -> PS -> PS
-addNodesFromTo x y = PS (tokens y) ((nodes y) ++ (nodes x)) (Parse.error y) (lastToken y)
+--addNodesFromTo x y = PS (tokens y) ((nodes y) ++ (nodes x)) (Parse.error y) (lastToken y)
+addNodesFromTo x y = y { nodes = (nodes y) ++ (nodes x) }
 
 completeProd :: G.Sym -> PS -> PS
 completeProd s ps = if isValidPS ps
-  then PS (tokens ps) [G.Node s (reverse $ nodes ps)] NoError (lastToken ps)
-  else PS (tokens ps) [] (Parse.error ps) (lastToken ps)
+  --then PS (tokens ps) [G.Node s (reverse $ nodes ps)] NoError (lastToken ps)
+  --else PS (tokens ps) [] (Parse.error ps) (lastToken ps)
+  then ps { nodes = [G.Node s (reverse $ nodes ps)], Parse.error = NoError }
+  else ps { nodes = [] } 
 
 isTokenTerm :: Lex.Token -> G.Sym -> Bool
 isTokenTerm (Lex.Token ttype tdata) (G.T stype val) =
