@@ -1,10 +1,9 @@
 {-# LANGUAGE OverloadedStrings #-}
 module Asm
-  ( generateAsm
+  ( module Asm
   ) where
 
 import qualified Data.Text as T
-import qualified Data.Text.IO as TIO
 --import Data.HashMap.Strict
 --import Data.Map.Strict as MS
 
@@ -32,28 +31,37 @@ movValRax val = [ "    movq  $" :: T.Text
                 , T.pack $ show val
                 , ", %rax\n" :: T.Text ]
 
+movVarRax :: Int -> [T.Text]
+movVarRax offset = [ "    movq  "
+                   , T.pack $ show offset
+                   , "(%rsp), %rax\n" ]
+
 addVal :: A.Node -> [T.Text]
-addVal (A.Leaf (A.IntVal val)) = [ "    add  $"
+addVal (A.Leaf (A.IntVal val)) = [ "    add   $"
                                  , T.pack $ show val
                                  , ", %rax\n" ]
 
+subVal :: A.Node -> [T.Text]
+subVal (A.Leaf (A.IntVal val)) = [ "    sub   $"
+                                 , T.pack $ show val
+                                 , ", %rax\n" 
+                                 , "    neg   %rax\n" ]
 
---buildExpr :: A.Node -> [T.Text]
---buildExpr (A.Leaf (A.IntVal val)) = movValRax val
---buildExpr (A.Node A.AddExpr (val:expr:[])) = (buildExpr expr) ++ (addVal val)
+mulVal :: A.Node -> [T.Text]
+mulVal (A.Leaf (A.IntVal val)) = [ "    imul  $"
+                                 , T.pack $ show val
+                                 , ", %rax\n" ]
 
--- TODO Should I build everything in reverse?
-build :: A.Node -> [T.Text]
+newVar :: [T.Text]
+newVar = [ "    sub   $8, %rsp\n" ]
 
-build (A.Node A.Program cs) = concatMap build cs
---build (A.Node A.ShowExpr (c:[])) = (build c) ++ [showAsm]
-build (A.Node A.ShowExpr (c:[])) = (build c) ++ [showAsm]
-build (A.Node A.AddExpr (val:expr:[])) = (build expr) ++ (addVal val)
-build (A.Leaf (A.IntExpr val)) = movValRax val
+adjustRsp :: Int -> [T.Text]
+adjustRsp val = [ "    add   $"
+                , T.pack $ show val
+                , ", %rsp" ]
 
-generateAsm :: A.Node -> IO ()
-generateAsm ast = do
-  let fn = "asm/main.s"
-  let program = build ast
-  mapM_ (TIO.appendFile fn) (preamble : program)
-  TIO.appendFile fn postlude
+exprToStack :: Int -> [T.Text]
+exprToStack offset = [ "    movq  %rax, "
+                     , T.pack $ show offset
+                     , "(%rsp)\n" ]
+

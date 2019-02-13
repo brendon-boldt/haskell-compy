@@ -27,6 +27,8 @@ data Value =
   IntExpr Int |
   NameVal DType String |
   NameExpr DType String
+  -- It seems to me like we need just a plain-old `Name`, but I will let that
+  -- slide for now.
 
 instance Show Value where
   --show (FloatVal x) = "FloatVal" ++ (show x)
@@ -38,7 +40,7 @@ instance Show Value where
 data Sym = Program | 
   LetExpr | ShowExpr | 
   DivExpr | MulExpr | SubExpr | AddExpr
-    deriving (Show)
+    deriving (Show, Eq)
 
 instance Show Node where
   show (Leaf val) = "("++(show val)++")"
@@ -52,7 +54,7 @@ isShow (G.Leaf (G.T _ val) _) = val == "show"
 
 makeLeaf :: G.Node -> Bool -> Node
 makeLeaf (G.Leaf _ (Lex.Token Lex.Name td)) isExpr =
-  Leaf $ NameVal dtype val
+  Leaf $ nameType dtype val
     where nameType = if' isExpr NameExpr NameVal
           val = (Lex.value td)
           dtype = case val of
