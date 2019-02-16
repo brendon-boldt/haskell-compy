@@ -26,28 +26,9 @@ data CGState = CGState { vars :: Map.Map String Int
                        , sp :: Int
                        , cgwrite :: [T.Text] -> IO ()}
 
---w2f :: Handle -> [T.Text] -> IO ()
---w2f h ts = mapM_ (TIO.hPutStr h) ts
-
 initCGState :: Handle -> CGState
 --initCGState = CGState Map.empty (-1)
 initCGState handle = CGState Map.empty (-1) (mapM_ (TIO.hPutStr handle))
-
--- CodeGen Monad
-type CGM = State CGState
-
-
-
---data W2File = W2File [T.Text -> IO ()]
---data W2File = W2File (IO ())
---
---instance Semigroup W2File where
---  (W2File x) <> (W2File y) = W2File $ x >> y
---instance Monoid W2File where
---  mempty = W2File $ return ()
-
---cgmPlus :: CGM [a] -> CGM [a] -> CGM [a] 
---cgmPlus x y = liftA2 (++) x y
 
 getOffset :: CGState -> String -> Maybe Int
 getOffset cgs var =
@@ -57,14 +38,12 @@ getOffset cgs var =
 getStackSpace :: CGState -> Int
 getStackSpace cgs = (sp cgs + 1) * 8
 
---newVar :: String -> CGM ()
 newVar :: Monad m => String -> StateT CGState m ()
 newVar name = state (\cgs ->
   let newSP = sp cgs + 1
       newVarMap = Map.insert name newSP (vars cgs)
   in ((), cgs { vars = newVarMap, sp = newSP }))
 
---handleLet :: A.Node -> CGM [T.Text]
 handleLet :: A.Node -> StateT CGState IO ()
 handleLet (A.Leaf (A.NameVal _ name)) = do
   cgs <- get
@@ -75,8 +54,6 @@ handleLet (A.Leaf (A.NameVal _ name)) = do
     -- 0 because we always know where a new variable is going -- maybe this
     -- will change at some point?
 
---handleNameExpr :: String -> CGM [T.Text]
---handleNameExpr :: String -> CGM (IO ())
 handleNameExpr :: String -> StateT CGState IO ()
 handleNameExpr name = do
   cgs <- get
@@ -86,7 +63,6 @@ handleNameExpr name = do
     then w2f $ Asm.movVarRax (fromJust maybeOffset)
     else undefined
 
---build :: A.Node -> CGM [T.Text]
 build :: A.Node -> StateT CGState IO ()
 
 -- Since Program is effectively a procedure, we need to clean up the stack

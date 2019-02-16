@@ -25,10 +25,10 @@ instance Eq Lex.Token where
   (Lex.Token _ x) == (Lex.Token _ y) = (Lex.loc x) == (Lex.loc y)
 
 -- Parser State
-data PS = PS { tokens :: [Lex.Token],
-               nodes :: [G.Node],
-               error :: Error, 
-               lastToken :: Lex.Token}
+data PS = PS { tokens :: [Lex.Token]
+             , nodes :: [G.Node]
+             , error :: Error
+             , lastToken :: Lex.Token}
   deriving (Show)
 
 
@@ -116,7 +116,10 @@ parseSym ps sym = do
   let updated = map (\x -> updateLastToken x maxToken) filtered
   if null filtered
     then [PS (tokens ps) [] Error maxToken]
+    -- Using `updated` instead of `filtered` makes things a lot slower due to
+    -- the growing parse tree when we have long files.
     else updated
+    --else filtered
 
 filterParseable :: [Lex.Token] -> [Lex.Token]
 filterParseable tokens = 

@@ -18,15 +18,12 @@ main = do
   contents <- hGetContents handle
   let tokens = Lex.chadLex contents
   --putStr (show tokens)
-  --putStrLn "Lex start."
   Lex.handleLex tokens
-  --putStrLn "Lex done."
   let cst = head $ Parse.parse tokens
-  --putStrLn "Parse done."
-  --putStrLn $ Parse.showPS cst
-  let ast = AST.buildAST (head $ Parse.nodes cst)
-  --putStrLn "AST done."
-  --putStrLn $ show ast
-  CG.generateAsm ast
-  --putStrLn "CG done."
+  putStrLn $ Parse.showPS cst
+
+  ----putStrLn $ Parse.showPS cst
+  --let ast = AST.buildAST (head $ Parse.nodes cst)
+  ----putStrLn $ show ast
+  --CG.generateAsm ast
   hClose handle
