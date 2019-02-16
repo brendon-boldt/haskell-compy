@@ -2,20 +2,15 @@
 SOURCES = $(wildcard src/*.hs)
 
 .PHONY: default
-default: $(SOURCES)
+default:
 	@rm -f asm/main.s
-	@ghc -O -dynamic -isrc src/Main.hs
-	@src/./Main $(source)
-	@gcc -o Main asm/main.s asm/lib.s
-	@./Main
+	@stack build
+	@stack exec haskell-compy-exe $(source)
+	@gcc -o asm/main.out asm/main.s asm/lib.s
+	@asm/./main.out
 
-.PHONY: asm
-asm: src/Asm.hs
-	@ghc -O -dynamic -isrc src/Asm.hs
-	@rm asm/main.s
-	@src/./Asm
-	@gcc -o Main asm/main.s asm/lib.s
-	@./Main
-
-clean:
-	rm Main src/*.{o,hi}
+.PHONY: profile
+profile:
+	@rm -f asm/main.s
+	@stack build --profile
+	@stack exec -- haskell-compy-exe $(source) +RTS -h -p
