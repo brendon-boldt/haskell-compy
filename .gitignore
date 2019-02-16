@@ -1,2 +1,5 @@
 *.o
 *.hi
+.stack-work/
+haskell-compy.cabal
+*~
