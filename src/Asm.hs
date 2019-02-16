@@ -27,9 +27,9 @@ showAsm = "\n\
           \    call  show_int\n"
 
 movValRax :: Int -> [T.Text]
-movValRax val = [ "    movq  $" :: T.Text
+movValRax val = [ "    movq  $"
                 , T.pack $ show val
-                , ", %rax\n" :: T.Text ]
+                , ", %rax\n" ]
 
 movVarRax :: Int -> [T.Text]
 movVarRax offset = [ "    movq  "
@@ -58,7 +58,7 @@ newVar = [ "    sub   $8, %rsp\n" ]
 adjustRsp :: Int -> [T.Text]
 adjustRsp val = [ "    add   $"
                 , T.pack $ show val
-                , ", %rsp" ]
+                , ", %rsp\n" ]
 
 exprToStack :: Int -> [T.Text]
 exprToStack offset = [ "    movq  %rax, "
