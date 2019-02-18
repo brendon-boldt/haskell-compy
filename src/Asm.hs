@@ -21,10 +21,10 @@ postlude = "\n\
            \    xor   %rax, %rax\n\
            \    ret\n"
 
-showAsm :: T.Text
-showAsm = "\n\
+showAsm :: [T.Text]
+showAsm = ["\
           \    movq  %rax, %rsi\n\
-          \    call  show_int\n"
+          \    call  show_int\n"]
 
 movValRax :: Int -> [T.Text]
 movValRax val = [ "    movq  $"
@@ -36,32 +36,33 @@ movVarRax offset = [ "    movq  "
                    , T.pack $ show offset
                    , "(%rsp), %rax\n" ]
 
-addVal :: A.Node -> [T.Text]
-addVal (A.Leaf (A.IntVal val)) = [ "    add   $"
-                                 , T.pack $ show val
-                                 , ", %rax\n" ]
+makeNameVal :: Int -> T.Text
+makeNameVal offset = (T.pack $ show offset) `T.append` "(%rsp)"
 
-subVal :: A.Node -> [T.Text]
-subVal (A.Leaf (A.IntVal val)) = [ "    sub   $"
-                                 , T.pack $ show val
-                                 , ", %rax\n" 
-                                 , "    neg   %rax\n" ]
+makeIntVal :: Int -> T.Text
+makeIntVal val = "$" `T.append` (T.pack $ show val)
 
-mulVal :: A.Node -> [T.Text]
-mulVal (A.Leaf (A.IntVal val)) = [ "    imul  $"
-                                 , T.pack $ show val
-                                 , ", %rax\n" ]
+addVal :: T.Text -> [T.Text]
+addVal val = [ "    add   " , val, ", %rax\n" ]
+
+subVal :: T.Text -> [T.Text]
+subVal val = [ "    sub   $" , val, ", %rax\n" 
+             , "    neg   %rax\n" ]
+
+mulVal :: T.Text -> [T.Text]
+mulVal val  = [ "    imul  $" , val, ", %rax\n" ]
 
 newVar :: [T.Text]
 newVar = [ "    sub   $8, %rsp\n" ]
 
 adjustRsp :: Int -> [T.Text]
-adjustRsp val = [ "    add   $"
-                , T.pack $ show val
-                , ", %rsp\n" ]
+adjustRsp val = [ "\n    add   $" , x, ", %rsp\n" ]
+  where x = T.pack $ show val
 
 exprToStack :: Int -> [T.Text]
 exprToStack offset = [ "    movq  %rax, "
                      , T.pack $ show offset
                      , "(%rsp)\n" ]
 
+callName :: String -> [T.Text]
+callName name = [ "    call  ", T.pack name,"\n" ]

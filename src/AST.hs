@@ -2,12 +2,15 @@ module AST (
   Node (..),
   Sym (..),
   Value (..),
+  DType (..),
   --Sym (..)
   buildAST
 ) where
 
 import qualified Grammar as G 
 import qualified Lex as Lex
+
+import Debug.Trace
 
 if' :: Bool -> a -> a -> a
 if' True  x _ = x
@@ -39,7 +42,8 @@ instance Show Value where
 
 data Sym = Program | 
   LetExpr | ShowExpr | 
-  DivExpr | MulExpr | SubExpr | AddExpr
+  DivExpr | MulExpr | SubExpr | AddExpr |
+  ProcCall | Def | ProcDef
     deriving (Show, Eq)
 
 instance Show Node where
@@ -61,11 +65,12 @@ makeLeaf (G.Leaf _ (Lex.Token Lex.Name td)) isExpr =
             'i':_ -> IntType
             'f':_ -> FloatType
             'p':_ -> ProcType
-          
+
 makeLeaf (G.Leaf _ (Lex.Token Lex.NumLit td)) isExpr =
   Leaf $ dtype $ (read $ Lex.value td :: Int)
     where dtype = if' isExpr IntExpr IntVal
---makeLeaf _ = Leaf (IntVal 32)
+
+makeLeaf x _ = (trace (show x) undefined)
 
 toBinExpr :: G.Node -> Sym
 toBinExpr (G.Leaf _ (Lex.Token _ td)) 
@@ -75,8 +80,8 @@ toBinExpr (G.Leaf _ (Lex.Token _ td))
   | (Lex.value td) == "+" = AddExpr
 
 applyProd :: G.Node -> [Node]
-applyProd (G.Node G.S ns) = [Node Program (applyProd $ head ns)]
 
+applyProd (G.Node G.S ns) = [Node Program (applyProd $ head ns)]
 applyProd (G.Node G.StL (n0:n1:[])) = (head (applyProd n0)) : (applyProd n1)
 applyProd (G.Node G.StL (n0:[])) = applyProd n0
 applyProd (G.Node G.St (n0:_)) = applyProd n0
@@ -88,14 +93,23 @@ applyProd (G.Node G.Expr ns@(n0:(G.Node G.BinOp op):n1:[])) =
   [Node (toBinExpr $ head op) (concatMap applyProd [n0, n1])]
 --applyProd (G.Node G.Expr ((G.Node G.Val val):[])) = [makeLeaf $ head val]
 applyProd (G.Node G.Expr ((G.Node G.Val val):[])) = [makeLeaf (head val) True]
+applyProd (G.Node G.Expr (n@(G.Node G.ProcCall def):[])) = applyProd n
 
 applyProd (G.Node G.Val val) = [makeLeaf (head val) False]
 
 applyProd gl@(G.Leaf (G.T' Lex.Name) _) = [makeLeaf gl False]
 
+applyProd (G.Node G.ProcDef (name:_:def:[])) =
+  [Node ProcDef ((makeLeaf name False) : (applyProd def))]
+applyProd (G.Node G.ProcCall (_:def:[])) =
+  [Node ProcCall (applyProd def)]
+applyProd (G.Node G.Def (name:[])) = [makeLeaf name False]
+applyProd (G.Node G.Def (_:stl:_)) = [Node Def (applyProd stl)]
+
+
 --applyProd (G.Node gs ns) = [Wrapper gs (concatMap applyProd ns)]
 --applyProd n@(G.Leaf _ _) = [ValWrapper n]
-applyProd _ = undefined
+applyProd x = (trace (show x) undefined)
 
 buildAST :: G.Node -> Node
 buildAST root = head $ applyProd root

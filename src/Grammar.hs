@@ -24,8 +24,8 @@ Expr = "let" Name "be" Expr
      | Val
      | Val "+" Expr
      | Val "-" Expr
-     | ProcCall
-Val = Name | NumLit
+     --| ProcCall
+Val = Name | NumLit | ProcCall (?)
 
 ProcDef = "when" Cond Name "does" Def
         | Name "does" Def
@@ -49,27 +49,31 @@ getProds :: Sym -> [[Sym]]
 getProds S = [[StL, T' Lex.EOF]]
 getProds StL = [[St, StL],
                 [St]]
-getProds St = [[Expr, lS "."],
-               [ProcDef, lS "."],
-               [ProcCall, lS "."]]
-getProds Expr = [[lKW "let", T' Lex.Name, lKW "be", Expr],
-                 [lKW "show", Expr],
-                 --[Val, lS "+", Expr],
-                 [Val, BinOp, Expr],
-                 [Val]]
+getProds St = [ [Expr, lS "."]
+              , [ProcDef, lS "."] ]
+               --[ProcCall, lS "."]]
+getProds Expr = [ [lKW "let", T' Lex.Name, lKW "be", Expr]
+                , [lKW "show", Expr]
+                , [ProcCall]
+                --, [Val, lS "+", Expr]
+                , [Val, BinOp, Expr]
+                , [Val] ]
 getProds BinOp = [[lS "+"], [lS "-"], [lS "*"], [lS "/"]]
-getProds Val = [[T' Lex.Name],
-                [T' Lex.NumLit]]
+getProds Val = [ [T' Lex.Name]
+               , [T' Lex.NumLit] ]
+               --, [ProcCall] ]
 getProds ProcDef = [[lKW "when", Cond, lS ",", T' Lex.Name, lKW "does", Def],
                     [T' Lex.Name, lKW "does", Def]]
-getProds Def = [[lS "`", StL, lS "'"],
-                [T' Lex.Name]]
+getProds Def = [[lS "`", StL, lS "'"]]
+                --[T' Lex.Name]]
 getProds Cond = [[Expr, lKW "is", Expr],
                  [Expr, lKW "is", lKW "less", lKW "than", Expr],
                  [Expr, lKW "is", lKW "greater", lKW "than", Expr]]
 getProds ProcCall =
-  [[lKW "given", T' Lex.Name, lKW "is", Expr, lS ",", lKW "do", Def],
-   [lKW "do",  Def]]
+  [[lKW "given", T' Lex.Name, lKW "is", Expr, lS ",", lKW "do", T' Lex.Name],
+   [lKW "do",  T' Lex.Name]]
+  --[[lKW "given", T' Lex.Name, lKW "is", Expr, lS ",", lKW "do", Def],
+  -- [lKW "do",  Def]]
 
 data Node = Node Sym [Node] | Leaf Sym Lex.Token
 

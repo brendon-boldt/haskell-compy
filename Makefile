@@ -4,7 +4,7 @@ SOURCES = $(wildcard src/*.hs)
 .PHONY: default
 default:
 	@rm -f asm/main.s
-	@stack build
+	@stack build --verbosity warn
 	@stack exec haskell-compy-exe $(source)
 	@gcc -o asm/main.out asm/main.s asm/lib.s
 	@asm/./main.out
