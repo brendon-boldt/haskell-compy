@@ -66,3 +66,15 @@ exprToStack offset = [ "    movq  %rax, "
 
 callName :: String -> [T.Text]
 callName name = [ "    call  ", T.pack name,"\n" ]
+
+makeProc :: String -> [T.Text]
+makeProc name = [ T.pack name, ":\n"
+                , "    ret\n" ]
+
+beginProc :: String -> [T.Text]
+beginProc name = [ "\n",  T.pack name, ":\n" ]
+
+endProc :: Int -> [T.Text]
+endProc val = [ "    add   $", x, ", %rsp\n"
+              , "    ret\n" ]
+                where x = T.pack $ show val

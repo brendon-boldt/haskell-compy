@@ -22,20 +22,11 @@ import qualified Asm as Asm
 
 data Proc = Proc { procdef :: A.Node
                  , conds :: Maybe A.Node }
--- Make this an instance of foldable later.
 
 data CGState = CGState { vars :: Map.Map String Int
                        , procs :: Map.Map String [Proc]
                        , sp :: Int
                        , cgwrite :: [T.Text] -> IO () }
-
-initCGState :: Handle -> CGState
---initCGState = CGState Map.empty (-1)
-initCGState handle = CGState
-                     Map.empty
-                     Map.empty
-                     (-1)
-                     (mapM_ (TIO.hPutStr handle))
 
 getOffset :: CGState -> String -> Maybe Int
 getOffset cgs var =
@@ -79,10 +70,10 @@ addProc name proc cgs =
 -- This only mutates the CGState and does not write any assembly because the
 -- procedure definitions will all happen at the end. 
 handleProcDef :: A.Node -> A.Node -> StateT CGState IO ()
-handleProcDef (A.Leaf (A.NameVal A.ProcType name)) stl = do
+handleProcDef (A.Leaf (A.NameVal A.ProcType name)) def = do
   cgs <- get
   let maybeProc = Map.lookup name (procs cgs) 
-  let newProc = Proc stl Nothing
+  let newProc = Proc def Nothing
   if isJust maybeProc
     then state (addProc name (newProc:(fromJust maybeProc)))
     else state (addProc name [newProc])
@@ -97,12 +88,17 @@ makeVal (A.Leaf (A.NameVal _ name)) cgs =
   Asm.makeNameVal $ fromJust $ getOffset cgs name
 makeVal (A.Leaf (A.IntVal val)) _ = Asm.makeIntVal val
 
+handleRoot :: [A.Node] -> StateT CGState IO ()
+handleRoot stl = do
+  sequence_ $ intersperse (w2f ["\n"]) (map build stl)
+  cgs <- get
+  --w2f (Asm.adjustRsp (getStackSpace cgs))
+  w2f (Asm.endProc (getStackSpace cgs))
+
 build :: A.Node -> StateT CGState IO ()
 
-build (A.Node A.Program cs) = do
-  sequence_ $ intersperse (w2f ["\n"]) (map build cs)
-  cgs <- get
-  w2f (Asm.adjustRsp (getStackSpace cgs))
+build (A.Node A.Program stl) = handleRoot stl
+build (A.Node A.Def stl) = handleRoot stl
 
 build (A.Node A.ProcDef (name:def:[])) = handleProcDef name def
 build (A.Node A.ProcCall (name:[])) = handleProcCall name
@@ -124,15 +120,34 @@ build x = (trace (show x) undefined)
 w2f :: [T.Text] -> StateT CGState IO ()
 w2f ts = get >>= (\cgs -> liftIO $ (cgwrite cgs) ts)
 
+
+buildProcs :: CGState -> CGState -> IO ()
+buildProcs final init = do
+  -- Temporary simplifying assumption: no conds, single def
+  forM_ (Map.keys $ procs final) $ \name -> do
+    forM_ ((procs final) Map.! name) $ \proc -> do
+
+      (cgwrite init) $ Asm.beginProc name
+      runStateT (build (procdef proc)) init
+
+buildHelper :: CGState -> A.Node -> IO ()
+buildHelper initState root = do
+  finalState <- runStateT (build root) initState
+  buildProcs (snd finalState) initState
+
 generateAsm :: A.Node -> IO ()
 generateAsm ast = do
   let fn = "asm/main.s"
   handle <- openFile fn WriteMode
+  let initState = getCGState handle
+
   TIO.hPutStr handle Asm.preamble
 
-  --evalState (build ast) (initCGState handle)
-  runStateT (build ast) (initCGState handle)
-  --mapM_ (TIO.hPutStr handle) (Asm.preamble : program)
+  buildHelper initState ast
 
-  TIO.hPutStr handle Asm.postlude
   hClose handle
+    where getCGState h = CGState
+                         Map.empty
+                         Map.empty
+                         (-1)
+                         (mapM_ (TIO.hPutStr h))
