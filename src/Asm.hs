@@ -7,7 +7,20 @@ import qualified Data.Text as T
 --import Data.HashMap.Strict
 --import Data.Map.Strict as MS
 
-import qualified AST as A
+--import qualified AST as A
+
+class ShowAsm a where
+  showAsm :: a -> T.Text
+
+data Store = Register T.Text | Stack Int | Literal Int
+
+instance ShowAsm Store where
+  showAsm (Register reg) = T.concat ["%", reg]
+  showAsm (Stack offset) = T.concat [T.pack $ show offset, "(%rsp)"]
+  showAsm (Literal val) = T.concat ["$" :: T.Text, T.pack $ show val]
+
+argRegs = map Register [ "rdi", "rsi", "rdx", "rcx", "r8", "r9" ]
+accReg = Register "rax"
 
 preamble :: T.Text
 preamble = ".global   main\n\
@@ -21,48 +34,43 @@ postlude = "\n\
            \    xor   %rax, %rax\n\
            \    ret\n"
 
-showAsm :: [T.Text]
-showAsm = ["\
-          \    movq  %rax, %rsi\n\
-          \    call  show_int\n"]
+showAcc :: [T.Text]
+showAcc = [ "    movq  %rax", showAsm $ head argRegs, "\n" 
+          , "    call  show_int\n" ]
 
-movValRax :: Int -> [T.Text]
-movValRax val = [ "    movq  $"
-                , T.pack $ show val
-                , ", %rax\n" ]
+-- Eventually these could be monadic actions, right?
+movToAcc :: Store -> [T.Text]
+movToAcc s = [ "    movq  ", showAsm s, ", ", showAsm accReg ]
 
-movVarRax :: Int -> [T.Text]
-movVarRax offset = [ "    movq  "
-                   , T.pack $ show offset
-                   , "(%rsp), %rax\n" ]
+--makeNameVal :: Int -> T.Text
+--makeNameVal offset = (T.pack $ show offset) `T.append` "(%rsp)"
 
-makeNameVal :: Int -> T.Text
-makeNameVal offset = (T.pack $ show offset) `T.append` "(%rsp)"
+--makeIntVal :: Int -> T.Text
+--makeIntVal val = "$" `T.append` (T.pack $ show val)
 
-makeIntVal :: Int -> T.Text
-makeIntVal val = "$" `T.append` (T.pack $ show val)
+addToAcc :: Store -> [T.Text]
+addToAcc s = [ "    addq  " , showAsm s, ", %rax\n" ]
 
-addVal :: T.Text -> [T.Text]
-addVal val = [ "    add   " , val, ", %rax\n" ]
+subFromAcc :: Store -> [T.Text]
+subFromAcc s = [ "    subq  $" , showAsm s, ", %rax\n" 
+               , "    neg   %rax\n" ]
 
-subVal :: T.Text -> [T.Text]
-subVal val = [ "    sub   $" , val, ", %rax\n" 
-             , "    neg   %rax\n" ]
-
-mulVal :: T.Text -> [T.Text]
-mulVal val  = [ "    imul  $" , val, ", %rax\n" ]
+mulAcc :: Store -> [T.Text]
+mulAcc s  = [ "    imulq $" , showAsm s, ", %rax\n" ]
 
 newVar :: [T.Text]
-newVar = [ "    sub   $8, %rsp\n" ]
+newVar = [ "    subq  $8, %rsp\n" ]
 
 adjustRsp :: Int -> [T.Text]
-adjustRsp val = [ "\n    add   $" , x, ", %rsp\n" ]
+adjustRsp val = [ "\n    addq  $" , x, ", %rsp\n" ]
   where x = T.pack $ show val
 
-exprToStack :: Int -> [T.Text]
-exprToStack offset = [ "    movq  %rax, "
-                     , T.pack $ show offset
-                     , "(%rsp)\n" ]
+--exprToStack :: Int -> [T.Text]
+--exprToStack offset = [ "    movq  %rax, "
+--                     , T.pack $ show offset
+--                     , "(%rsp)\n" ]
+accToStore :: Store -> [T.Text]
+accToStore s = [ "    movq  %rax,", showAsm s, "\n" ]
 
 callName :: String -> [T.Text]
 callName name = [ "    call  ", T.pack name,"\n" ]

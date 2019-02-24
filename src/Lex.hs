@@ -41,7 +41,7 @@ data TType =
     deriving (Show, Eq)
 
 keywords = ["let", "be", "show", "is", "does", "do", "given",
-            "greater", "less", "than", "when"]
+            "greater", "less", "than", "when", "and"]
 symbols =  "*/,.+-'`()"
 
 isWhitespace s = all (==' ') s

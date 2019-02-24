@@ -16,8 +16,9 @@ if' :: Bool -> a -> a -> a
 if' True  x _ = x
 if' False _ y = y
 
-data Node = Node Sym [Node] |
-  Leaf Value |
+--data Node = Node Sym [Node] |
+data Node = Node { sym :: Sym, children ::  [Node] } |
+  Leaf { value :: Value } |
   Wrapper G.Sym [Node] |
   ValWrapper G.Node
 
@@ -29,7 +30,8 @@ data Value =
   IntVal Int |
   IntExpr Int |
   NameVal DType String |
-  NameExpr DType String
+  NameExpr DType String |
+  OrderVal Ordering -- ?
   -- It seems to me like we need just a plain-old `Name`, but I will let that
   -- slide for now.
 
@@ -43,7 +45,8 @@ instance Show Value where
 data Sym = Program | 
   LetExpr | ShowExpr | 
   DivExpr | MulExpr | SubExpr | AddExpr |
-  ProcCall | Def | ProcDef
+  ProcCall | Def | ProcDef |
+  ArgAssign | ArgList | Cond
     deriving (Show, Eq)
 
 instance Show Node where
@@ -86,6 +89,13 @@ applyProd (G.Node G.StL (n0:n1:[])) = (head (applyProd n0)) : (applyProd n1)
 applyProd (G.Node G.StL (n0:[])) = applyProd n0
 applyProd (G.Node G.St (n0:_)) = applyProd n0
 
+applyProd (G.Node G.ArgList (n0:_:n1:[])) =
+  (head (applyProd n0)) : (applyProd n1)
+applyProd (G.Node G.ArgList (n0:[])) = applyProd n0
+applyProd (G.Node G.ArgAssign (name:_:arg:[])) =
+  [Node ArgAssign $ concatMap applyProd [name, arg]]
+applyProd (G.Node G.Arg (arg:[])) = applyProd arg
+
 applyProd (G.Node G.Expr (gl@(G.Leaf _ _):gls))
   | isLet gl = [Node LetExpr (concatMap applyProd [head gls, gls !! 2])] -- It feels absolutely disgusting to write this line
   | isShow gl = [Node ShowExpr (concatMap applyProd gls)]
@@ -93,7 +103,9 @@ applyProd (G.Node G.Expr ns@(n0:(G.Node G.BinOp op):n1:[])) =
   [Node (toBinExpr $ head op) (concatMap applyProd [n0, n1])]
 --applyProd (G.Node G.Expr ((G.Node G.Val val):[])) = [makeLeaf $ head val]
 applyProd (G.Node G.Expr ((G.Node G.Val val):[])) = [makeLeaf (head val) True]
+
 applyProd (G.Node G.Expr (n@(G.Node G.ProcCall def):[])) = applyProd n
+--applyProd (G.Node G.Expr ns) = applyProd ns
 
 applyProd (G.Node G.Val val) = [makeLeaf (head val) False]
 
@@ -103,9 +115,15 @@ applyProd (G.Node G.ProcDef (name:_:def:[])) =
   [Node ProcDef ((makeLeaf name False) : (applyProd def))]
 applyProd (G.Node G.ProcCall (_:def:[])) =
   [Node ProcCall (applyProd def)]
+-- Should I use indexing instead of PM? Or just use arrays?
+applyProd (G.Node G.ProcCall (_:al:rest)) = do
+  let argList = Node ArgList $ applyProd al
+  [Node ProcCall $ argList : (concatMap applyProd rest)]
 applyProd (G.Node G.Def (name:[])) = [makeLeaf name False]
 applyProd (G.Node G.Def (_:stl:_)) = [Node Def (applyProd stl)]
 
+-- Discard random keywords and symbols by default
+applyProd (G.Leaf _ _) = []
 
 --applyProd (G.Node gs ns) = [Wrapper gs (concatMap applyProd ns)]
 --applyProd n@(G.Leaf _ _) = [ValWrapper n]
