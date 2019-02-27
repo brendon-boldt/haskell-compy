@@ -13,6 +13,7 @@ class ShowAsm a where
   showAsm :: a -> T.Text
 
 data Store = Register T.Text | Stack Int | Literal Int
+  deriving Show
 
 instance ShowAsm Store where
   showAsm (Register reg) = T.concat ["%", reg]
@@ -35,12 +36,12 @@ postlude = "\n\
            \    ret\n"
 
 showAcc :: [T.Text]
-showAcc = [ "    movq  %rax", showAsm $ head argRegs, "\n" 
+showAcc = [ "    movq  %rax, ", showAsm $ head argRegs, "\n" 
           , "    call  show_int\n" ]
 
 -- Eventually these could be monadic actions, right?
 movToAcc :: Store -> [T.Text]
-movToAcc s = [ "    movq  ", showAsm s, ", ", showAsm accReg ]
+movToAcc s = [ "    movq  ", showAsm s, ", ", showAsm accReg, "\n" ]
 
 --makeNameVal :: Int -> T.Text
 --makeNameVal offset = (T.pack $ show offset) `T.append` "(%rsp)"

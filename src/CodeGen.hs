@@ -20,44 +20,48 @@ import Debug.Trace
 import qualified AST as A
 import qualified Asm as Asm
 
-data Cond = Cond { condvar :: String
-                 , condorder :: Ordering
-                 , condexpr :: A.Node }
+data Cond = Cond { condexprs :: (A.Node, A.Node)
+                 , condorder :: Ordering }
 
-data Proc = Proc { procdef :: A.Node
-                 --, conds :: Maybe A.Node
-                 , conds :: [Cond]
-                 , args :: (String, Asm.Store) }
+--data ProcDef = ProcDef (
+
+--data Proc = Proc { procdef :: A.Node
+--                 --, conds :: Maybe A.Node
+--                 , conds :: [Cond]
+--                 , args :: (String, Asm.Store) }
+data Proc = Proc { procname :: String
+                 , procdefs :: [([Cond], A.Node)]
+                 --, args :: [(String, A.Node)] }
+                 , args :: Map.Map String Asm.Store }
+
+-- TODO When I pass vars in regs, they have to move out...
 
 data CGState = CGState { vars :: Map.Map String Asm.Store
-                       , procs :: Map.Map String [Proc]
+                       , procs :: Map.Map String Proc
                        , procprefix :: String
                        , sp :: Int
                        , cgwrite :: [T.Text] -> IO () }
 
-getOffset :: CGState -> String -> Maybe Int
-getOffset _ _ = undefined
---getOffset cgs var =
---  let calc = (\x -> ((sp cgs) - x) * 8)
---  in calc <$> (Map.lookup var (vars cgs))
+getVar :: CGState -> String -> Maybe Asm.Store
+getVar cgs name = Map.lookup name (vars cgs)
+
 
 getStackSpace :: CGState -> Int
-getStackSpace cgs = (sp cgs + 1) * 8
+getStackSpace cgs = sp cgs + 8
 
 newVar :: Monad m => String -> StateT CGState m Asm.Store
-newVar name = undefined
---newVar name = state (\cgs ->
---  let newSP = sp cgs + 1
---      newStore = Asm.Stack newSP
---      newVarMap = Map.insert name newStore (vars cgs)
---  in (newVar, cgs { vars = newVarMap, sp = newSP }))
+newVar name = state (\cgs ->
+  let newSP = sp cgs - 8
+      newStore = Asm.Stack newSP
+      newVarMap = Map.insert name newStore (vars cgs)
+  in (newStore, cgs { vars = newVarMap, sp = newSP }))
 
 handleLet :: A.Node -> StateT CGState IO ()
 handleLet (A.Leaf (A.NameVal _ name)) = do
   cgs <- get
-  let maybeOffset = getOffset cgs name
-  if isJust maybeOffset
-    then w2f $ Asm.accToStore $ Asm.Stack (fromJust maybeOffset)
+  let maybeVar = getVar cgs name
+  if isJust maybeVar
+    then w2f $ Asm.accToStore (fromJust maybeVar)
     else do
       w2f Asm.newVar
       newVar name >>= (w2f . Asm.accToStore)
@@ -67,18 +71,20 @@ handleLet (A.Leaf (A.NameVal _ name)) = do
 handleNameExpr :: String -> StateT CGState IO ()
 handleNameExpr name = do
   cgs <- get
-  let maybeOffset = getOffset cgs name
-  if isJust maybeOffset
+  let maybeVar = getVar cgs name
+  if isJust maybeVar
     --then return $ Asm.movVarRax (fromJust maybeOffset)
     --then w2f $ Asm.movVarRax (fromJust maybeOffset)
-    then w2f $ Asm.movToAcc $ Asm.Stack (fromJust maybeOffset)
-    else undefined
+    then w2f $ Asm.movToAcc (fromJust maybeVar)
+    else (trace name undefined)
 
+makeCond :: A.Node -> Cond
+makeCond _ = undefined
 
-addProc :: String -> [Proc] -> CGState -> ((), CGState)
+addProc :: String -> Proc -> CGState -> ((), CGState)
 addProc name proc cgs =
   let newMap = Map.insert name proc (procs cgs)
-  in ((), cgs { procs = newMap })
+  in  ((), cgs { procs = newMap })
 
 -- This only mutates the CGState and does not write any assembly because the
 -- procedure definitions will all happen at the end. 
@@ -86,30 +92,53 @@ handleProcDef :: [A.Node] -> A.Node -> A.Node -> StateT CGState IO ()
 handleProcDef conds (A.Leaf (A.NameVal A.ProcType name)) def = do
   cgs <- get
   let maybeProc = Map.lookup name (procs cgs) 
-  let newProc = undefined--Proc def Nothing
-  if isJust maybeProc
-    then undefined--state (addProc name (newProc:(fromJust maybeProc)))
-    else undefined--state (addProc name [newProc])
+  let newProcdef = (map makeCond conds, def)
+  let consProcdef x y = y { procdefs = x : (procdefs y) }
+  let newProc = (case maybeProc of
+                  (Just proc) -> consProcdef newProcdef proc
+                  _ -> Proc name [newProcdef] Map.empty)
+  state (addProc name newProc)
 
---handleArgAssign :: (A.Node, Asm.Store) -> StateT CGState IO String
---handleArgAssign ((A.Node A.ArgAssign (name:expr:[])), reg) = do
---  build expr
---  w2f = A.accToStore reg
---  return $ A.value name
+addArg :: Proc -> String -> Asm.Store -> CGState -> ((), CGState)
+addArg proc varname reg cgs =
+  -- It's okay if this fails
+  let newArgMap = Map.insert varname reg (args proc)
+      newProc = (proc { args = newArgMap })
+      newMap = Map.insert (procname proc) newProc (procs cgs)
+  in ((), cgs { procs = newMap })
 
----- Should this have lazy semantics?
---handleProcCall :: [A.Node] -> A.Node -> StateT CGState IO ()
---handleProcCall args (A.Leaf (A.NameVal A.ProcType name)) = do
---  map
---      
---  cgs <- get
---  w2f $ Asm.callName $ (procprefix cgs) ++ name
+-- TODO figure a better way to match args and regs
+--handleArgAssign :: Proc -> (String, A.Node) -> StateT CGState IO String
+handleArgAssign :: String -> (String, A.Node) -> StateT CGState IO ()
+handleArgAssign procName (varName, expr) = do
+  cgs <- get
+  let proc = (procs cgs) Map.! procName
+  let reg = if Map.member varName (args proc)
+              then (args proc) Map.! varName
+              else Asm.argRegs !! (length $ args proc)
+  state (addArg proc varName reg)
+  build expr
+  w2f $ Asm.accToStore reg
+  --return $ A.value varname
+
+unpackArg :: A.Node -> (String, A.Node)
+unpackArg (A.Node A.ArgAssign ((A.Leaf (A.NameVal _ name)):expr:[])) =
+  (name, expr)
+
+handleProcCall :: [A.Node] -> A.Node -> StateT CGState IO ()
+handleProcCall procArgs (A.Leaf (A.NameVal A.ProcType name)) = do
+  --let proc = (procs cgs) Map.! name
+  -- Things are not transfering from one to the next here...
+  mapM_ ((handleArgAssign name) . unpackArg) procArgs
+  cgs <- get
+  w2f $ Asm.callName $ (procprefix cgs) ++ (trace (show $ args $ (procs cgs) Map.! "pA") name)
 
 --makeVal :: A.Node -> State CGState T.Text
 makeVal :: A.Node -> CGState -> Asm.Store
 makeVal (A.Leaf (A.NameVal _ name)) cgs =
   --Asm.makeNameVal $ fromJust $ getOffset cgs name
-  Asm.Stack $ fromJust (getOffset cgs name)
+  --Asm.Stack $ fromJust (getOffset cgs name)
+  fromJust $ getVar cgs name
 makeVal (A.Leaf (A.IntVal val)) _ = Asm.Literal val
 
 handleRoot :: [A.Node] -> StateT CGState IO ()
@@ -126,8 +155,9 @@ build (A.Node A.Def stl) = handleRoot stl
 
 build (A.Node A.ProcDef (name:def:[])) = handleProcDef [] name def
 build (A.Node A.ProcDef (conds:name:def:[])) = undefined--handleProcDef conds name def
-build (A.Node A.ProcCall (name:[])) = undefined--handleProcCall [] name
-build (A.Node A.ProcCall (args:name:[])) = undefined--handleProcCall args name
+build (A.Node A.ProcCall (name:[])) = handleProcCall [] name
+build (A.Node A.ProcCall (args:name:[])) =
+  handleProcCall (A.children args) name
 
 build (A.Node A.ShowExpr (c:[])) = (build c) >> (w2f Asm.showAcc)
 -- Refactor this into something nicer when I feel like it
@@ -150,11 +180,15 @@ w2f ts = get >>= (\cgs -> liftIO $ (cgwrite cgs) ts)
 buildProcs :: CGState -> CGState -> IO ()
 buildProcs final init = do
   -- Temporary simplifying assumption: no conds, single def
-  forM_ (Map.keys $ procs final) $ \name -> do
-    forM_ ((procs final) Map.! name) $ \proc -> do
-      (cgwrite init) $ Asm.beginProc $ (procprefix final) ++ name
-      let newInit = init { procprefix = (procprefix init) ++ name ++ "_" }
-      buildHelper newInit (procdef proc)
+  --forM_ (Map.keys $ procs final) $ \name -> do
+    --forM_ ((procs final) Map.! name) $ \proc -> do
+  forM_ (procs final) $ \proc -> do
+    let name = procname proc
+    (cgwrite init) $ Asm.beginProc $ (procprefix final) ++ name
+    let newInit = init { procprefix = (procprefix init) ++ name ++ "_"
+                       , vars = trace (show $ args proc) (args proc) }
+    -- TODO make this accomodate conds
+    buildHelper newInit (snd $ head $ procdefs proc)
       
 
 buildHelper :: CGState -> A.Node -> IO ()
@@ -177,6 +211,6 @@ generateAsm ast = do
                          { vars = Map.empty
                          , procs = Map.empty
                          , procprefix = ""
-                         , sp = (-1)
+                         , sp = 8
                          , cgwrite = (mapM_ (TIO.hPutStr h)) }
 
