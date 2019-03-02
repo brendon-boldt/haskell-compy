@@ -9,6 +9,11 @@ default:
 	@gcc -o asm/main.out asm/main.s asm/lib.s
 	@asm/./main.out
 
+.PHONY: asm
+asm:
+	@gcc -o asm/main.out asm/main.s asm/lib.s
+	@asm/./main.out
+
 .PHONY: profile
 profile:
 	@rm -f asm/main.s

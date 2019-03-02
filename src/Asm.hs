@@ -59,8 +59,8 @@ subFromAcc s = [ "    subq  $" , showAsm s, ", %rax\n"
 mulAcc :: Store -> [T.Text]
 mulAcc s  = [ "    imulq $" , showAsm s, ", %rax\n" ]
 
-newVar :: [T.Text]
-newVar = [ "    subq  $8, %rsp\n" ]
+newStackVar :: [T.Text]
+newStackVar = [ "    subq  $8, %rsp\n" ]
 
 adjustRsp :: Int -> [T.Text]
 adjustRsp val = [ "\n    addq  $" , x, ", %rsp\n" ]
@@ -73,6 +73,9 @@ adjustRsp val = [ "\n    addq  $" , x, ", %rsp\n" ]
 accToStore :: Store -> [T.Text]
 accToStore s = [ "    movq  %rax,", showAsm s, "\n" ]
 
+storeToStore :: Store -> Store -> [T.Text]
+storeToStore s d = [ "    movq  ", showAsm s, ",", showAsm d, "\n" ]
+
 callName :: String -> [T.Text]
 callName name = [ "    call  ", T.pack name,"\n" ]
 
@@ -84,6 +87,8 @@ beginProc :: String -> [T.Text]
 beginProc name = [ "\n",  T.pack name, ":\n" ]
 
 endProc :: Int -> [T.Text]
-endProc val = [ "    add   $", x, ", %rsp\n"
-              , "    ret\n" ]
-                where x = T.pack $ show val
+endProc val
+        | val == 0  = [ "    ret\n" ]
+        | otherwise = [ "    add   $", x, ", %rsp\n"
+                      , "    ret\n" ]
+        where x = T.pack $ show val

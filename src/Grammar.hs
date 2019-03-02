@@ -70,8 +70,9 @@ getProds Cond = [[Expr, lKW "is", Expr],
                  [Expr, lKW "is", lKW "less", lKW "than", Expr],
                  [Expr, lKW "is", lKW "greater", lKW "than", Expr]]
 
-getProds Arg = [ [Def], [Expr] ]
-getProds ArgAssign = [ [T' Lex.Name, lKW "is", Arg] ]
+--getProds Arg = [ [Def], [Expr] ]
+getProds ArgAssign = [ [T' Lex.Name, lKW "is", Expr]
+                     , [T' Lex.Name, lKW "does", Def] ]
 getProds ArgList = [ [ArgAssign]
                , [ArgAssign, lKW "and", ArgList] ]
 getProds ProcCall =

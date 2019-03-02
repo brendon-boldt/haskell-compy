@@ -14,6 +14,7 @@ import Control.Monad
 import Control.Monad.Reader
 import Control.Monad.Trans.State
 import System.IO
+import Data.Foldable
 
 import Debug.Trace
 
@@ -43,18 +44,25 @@ data CGState = CGState { vars :: Map.Map String Asm.Store
                        , cgwrite :: [T.Text] -> IO () }
 
 getVar :: CGState -> String -> Maybe Asm.Store
-getVar cgs name = Map.lookup name (vars cgs)
+getVar cgs name =
+  let var = Map.lookup name (vars cgs)
+  in case var of
+       --(Just (Asm.Stack x)) -> Just $ Asm.Stack (sp cgs - x)
+       (Just (Asm.Stack x)) -> Just $ Asm.Stack $ x - (sp cgs)
+       x -> x
 
 
 getStackSpace :: CGState -> Int
-getStackSpace cgs = sp cgs + 8
+--getStackSpace cgs = sp cgs - 8
+getStackSpace cgs = 8 - (sp cgs)
 
-newVar :: Monad m => String -> StateT CGState m Asm.Store
-newVar name = state (\cgs ->
+newStackVar :: Monad m => String -> StateT CGState m Asm.Store
+newStackVar name = state (\cgs ->
   let newSP = sp cgs - 8
       newStore = Asm.Stack newSP
       newVarMap = Map.insert name newStore (vars cgs)
-  in (newStore, cgs { vars = newVarMap, sp = newSP }))
+  -- The new stack var will always be 0 offset from %rsp
+  in (Asm.Stack 0, cgs { vars = newVarMap, sp = newSP }))
 
 handleLet :: A.Node -> StateT CGState IO ()
 handleLet (A.Leaf (A.NameVal _ name)) = do
@@ -63,8 +71,8 @@ handleLet (A.Leaf (A.NameVal _ name)) = do
   if isJust maybeVar
     then w2f $ Asm.accToStore (fromJust maybeVar)
     else do
-      w2f Asm.newVar
-      newVar name >>= (w2f . Asm.accToStore)
+      w2f $ Asm.newStackVar
+      newStackVar name >>= (w2f . Asm.accToStore)
     -- 0 because we always know where a new variable is going -- maybe this
     -- will change at some point?
 
@@ -121,17 +129,32 @@ handleArgAssign procName (varName, expr) = do
   w2f $ Asm.accToStore reg
   --return $ A.value varname
 
+pushArgRegisters :: StateT CGState IO ()
+pushArgRegisters =
+  let
+    --toStack key store = case store of
+    toStack key store = case store of
+      r@(Asm.Register _) -> do
+        w2f $ Asm.newStackVar
+        var <- newStackVar key
+        w2f $ Asm.storeToStore r var
+      --_ -> return ()
+      _ -> return ()
+  --in (get >>= Map.mapWithKey toStack <$> vars)
+  in do
+      cgs <- get
+      sequence_ $ Map.mapWithKey toStack (vars cgs)
+
 unpackArg :: A.Node -> (String, A.Node)
 unpackArg (A.Node A.ArgAssign ((A.Leaf (A.NameVal _ name)):expr:[])) =
   (name, expr)
 
 handleProcCall :: [A.Node] -> A.Node -> StateT CGState IO ()
 handleProcCall procArgs (A.Leaf (A.NameVal A.ProcType name)) = do
-  --let proc = (procs cgs) Map.! name
-  -- Things are not transfering from one to the next here...
   mapM_ ((handleArgAssign name) . unpackArg) procArgs
+  pushArgRegisters
   cgs <- get
-  w2f $ Asm.callName $ (procprefix cgs) ++ (trace (show $ args $ (procs cgs) Map.! "pA") name)
+  w2f $ Asm.callName $ (procprefix cgs) ++ name
 
 --makeVal :: A.Node -> State CGState T.Text
 makeVal :: A.Node -> CGState -> Asm.Store
@@ -159,7 +182,10 @@ build (A.Node A.ProcCall (name:[])) = handleProcCall [] name
 build (A.Node A.ProcCall (args:name:[])) =
   handleProcCall (A.children args) name
 
-build (A.Node A.ShowExpr (c:[])) = (build c) >> (w2f Asm.showAcc)
+build (A.Node A.ShowExpr (c:[])) = do
+  pushArgRegisters
+  build c
+  w2f Asm.showAcc
 -- Refactor this into something nicer when I feel like it
 build (A.Node A.AddExpr (val:expr:[])) =
   (build expr) >> get >>= (w2f . Asm.addToAcc . (makeVal val))
@@ -186,7 +212,7 @@ buildProcs final init = do
     let name = procname proc
     (cgwrite init) $ Asm.beginProc $ (procprefix final) ++ name
     let newInit = init { procprefix = (procprefix init) ++ name ++ "_"
-                       , vars = trace (show $ args proc) (args proc) }
+                       , vars = args proc }
     -- TODO make this accomodate conds
     buildHelper newInit (snd $ head $ procdefs proc)
       
