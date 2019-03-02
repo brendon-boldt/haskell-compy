@@ -94,7 +94,6 @@ applyProd (G.Node G.ArgList (n0:_:n1:[])) =
 applyProd (G.Node G.ArgList (n0:[])) = applyProd n0
 applyProd (G.Node G.ArgAssign (name:_:arg:[])) =
   [Node ArgAssign $ concatMap applyProd [name, arg]]
---applyProd (G.Node G.Arg (arg:[])) = applyProd arg
 
 applyProd (G.Node G.Expr (gl@(G.Leaf _ _):gls))
   | isLet gl = [Node LetExpr (concatMap applyProd [head gls, gls !! 2])] -- It feels absolutely disgusting to write this line

@@ -4,7 +4,6 @@ module CodeGen
   ) where
 
 --import Data.HashMap.Strict
-import Data.Maybe (isJust, fromJust)
 import Data.List (intersperse)
 import qualified Data.Map.Strict as Map
 import qualified Data.Text.IO as TIO
@@ -24,18 +23,9 @@ import qualified Asm as Asm
 data Cond = Cond { condexprs :: (A.Node, A.Node)
                  , condorder :: Ordering }
 
---data ProcDef = ProcDef (
-
---data Proc = Proc { procdef :: A.Node
---                 --, conds :: Maybe A.Node
---                 , conds :: [Cond]
---                 , args :: (String, Asm.Store) }
 data Proc = Proc { procname :: String
                  , procdefs :: [([Cond], A.Node)]
-                 --, args :: [(String, A.Node)] }
                  , args :: Map.Map String Asm.Store }
-
--- TODO When I pass vars in regs, they have to move out...
 
 data CGState = CGState { vars :: Map.Map String Asm.Store
                        , procs :: Map.Map String Proc
@@ -47,13 +37,10 @@ getVar :: CGState -> String -> Maybe Asm.Store
 getVar cgs name =
   let var = Map.lookup name (vars cgs)
   in case var of
-       --(Just (Asm.Stack x)) -> Just $ Asm.Stack (sp cgs - x)
        (Just (Asm.Stack x)) -> Just $ Asm.Stack $ x - (sp cgs)
        x -> x
 
-
 getStackSpace :: CGState -> Int
---getStackSpace cgs = sp cgs - 8
 getStackSpace cgs = 8 - (sp cgs)
 
 newStackVar :: Monad m => String -> StateT CGState m Asm.Store
@@ -68,23 +55,19 @@ handleLet :: A.Node -> StateT CGState IO ()
 handleLet (A.Leaf (A.NameVal _ name)) = do
   cgs <- get
   let maybeVar = getVar cgs name
-  if isJust maybeVar
-    then w2f $ Asm.accToStore (fromJust maybeVar)
-    else do
+  case maybeVar of
+    (Just var) -> w2f $ Asm.accToStore var
+    otherwise  -> do
       w2f $ Asm.newStackVar
       newStackVar name >>= (w2f . Asm.accToStore)
-    -- 0 because we always know where a new variable is going -- maybe this
-    -- will change at some point?
 
 handleNameExpr :: String -> StateT CGState IO ()
 handleNameExpr name = do
   cgs <- get
   let maybeVar = getVar cgs name
-  if isJust maybeVar
-    --then return $ Asm.movVarRax (fromJust maybeOffset)
-    --then w2f $ Asm.movVarRax (fromJust maybeOffset)
-    then w2f $ Asm.movToAcc (fromJust maybeVar)
-    else (trace name undefined)
+  case maybeVar of
+    (Just var) -> w2f $ Asm.movToAcc var
+    otherwise  -> (trace name undefined)
 
 makeCond :: A.Node -> Cond
 makeCond _ = undefined
@@ -132,18 +115,13 @@ handleArgAssign procName (varName, expr) = do
 pushArgRegisters :: StateT CGState IO ()
 pushArgRegisters =
   let
-    --toStack key store = case store of
     toStack key store = case store of
       r@(Asm.Register _) -> do
         w2f $ Asm.newStackVar
         var <- newStackVar key
         w2f $ Asm.storeToStore r var
-      --_ -> return ()
       _ -> return ()
-  --in (get >>= Map.mapWithKey toStack <$> vars)
-  in do
-      cgs <- get
-      sequence_ $ Map.mapWithKey toStack (vars cgs)
+  in get >>= (sequence_ . (Map.mapWithKey toStack) . vars)
 
 unpackArg :: A.Node -> (String, A.Node)
 unpackArg (A.Node A.ArgAssign ((A.Leaf (A.NameVal _ name)):expr:[])) =
@@ -156,12 +134,9 @@ handleProcCall procArgs (A.Leaf (A.NameVal A.ProcType name)) = do
   cgs <- get
   w2f $ Asm.callName $ (procprefix cgs) ++ name
 
---makeVal :: A.Node -> State CGState T.Text
 makeVal :: A.Node -> CGState -> Asm.Store
 makeVal (A.Leaf (A.NameVal _ name)) cgs =
-  --Asm.makeNameVal $ fromJust $ getOffset cgs name
-  --Asm.Stack $ fromJust (getOffset cgs name)
-  fromJust $ getVar cgs name
+  case getVar cgs name of (Just x) -> x
 makeVal (A.Leaf (A.IntVal val)) _ = Asm.Literal val
 
 handleRoot :: [A.Node] -> StateT CGState IO ()
