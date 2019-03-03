@@ -9,6 +9,7 @@ import qualified Lex as Lex
 data Sym = S | StL | St | Expr | Val | 
   ProcCall | ProcDef | Def | Cond | BinOp |
   Arg | ArgAssign | ArgList | 
+  CondList |
   T Lex.TType String |
   T' Lex.TType
   deriving (Show)
@@ -62,10 +63,13 @@ getProds BinOp = [[lS "+"], [lS "-"], [lS "*"], [lS "/"]]
 getProds Val = [ [T' Lex.Name]
                , [T' Lex.NumLit] ]
                --, [ProcCall] ]
-getProds ProcDef = [[lKW "when", Cond, lS ",", T' Lex.Name, lKW "does", Def],
+getProds ProcDef = [[lKW "when", CondList, lS ",", T' Lex.Name, lKW "does", Def],
                     [T' Lex.Name, lKW "does", Def]]
 getProds Def = [ [lS "`", StL, lS "'"]
                , [T' Lex.Name] ]
+
+getProds CondList = [ [Cond, lKW "and", CondList]
+                    , [Cond] ]
 getProds Cond = [[Expr, lKW "is", Expr],
                  [Expr, lKW "is", lKW "less", lKW "than", Expr],
                  [Expr, lKW "is", lKW "greater", lKW "than", Expr]]
@@ -74,7 +78,7 @@ getProds Cond = [[Expr, lKW "is", Expr],
 getProds ArgAssign = [ [T' Lex.Name, lKW "is", Expr]
                      , [T' Lex.Name, lKW "does", Def] ]
 getProds ArgList = [ [ArgAssign]
-               , [ArgAssign, lKW "and", ArgList] ]
+                   , [ArgAssign, lKW "and", ArgList] ]
 getProds ProcCall =
   [[lKW "given", ArgList, lS ",", lKW "do", Def],
    [lKW "do",  Def]]

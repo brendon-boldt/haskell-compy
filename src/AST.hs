@@ -3,7 +3,6 @@ module AST (
   Sym (..),
   Value (..),
   DType (..),
-  --Sym (..)
   buildAST
 ) where
 
@@ -46,7 +45,8 @@ data Sym = Program |
   LetExpr | ShowExpr | 
   DivExpr | MulExpr | SubExpr | AddExpr |
   ProcCall | Def | ProcDef |
-  ArgAssign | ArgList | Cond
+  ArgAssign | ArgList |
+  Cond | CondList
     deriving (Show, Eq)
 
 instance Show Node where
@@ -95,6 +95,12 @@ applyProd (G.Node G.ArgList (n0:[])) = applyProd n0
 applyProd (G.Node G.ArgAssign (name:_:arg:[])) =
   [Node ArgAssign $ concatMap applyProd [name, arg]]
 
+applyProd (G.Node G.CondList (n0:_:n1:[])) =
+  (head (applyProd n0)) : (applyProd n1)
+applyProd (G.Node G.CondList (n0:[])) = applyProd n0
+applyProd (G.Node G.Cond (name:_:arg:[])) =
+  [Node Cond $ concatMap applyProd [name, arg]]
+
 applyProd (G.Node G.Expr (gl@(G.Leaf _ _):gls))
   | isLet gl = [Node LetExpr (concatMap applyProd [head gls, gls !! 2])] -- It feels absolutely disgusting to write this line
   | isShow gl = [Node ShowExpr (concatMap applyProd gls)]
@@ -112,6 +118,9 @@ applyProd gl@(G.Leaf (G.T' Lex.Name) _) = [makeLeaf gl False]
 
 applyProd (G.Node G.ProcDef (name:_:def:[])) =
   [Node ProcDef ((makeLeaf name False) : (applyProd def))]
+applyProd (G.Node G.ProcDef (_:conds:_:name:_:def:[])) =
+  let children = (applyProd conds) ++ ((makeLeaf name False) : (applyProd def))
+  in [Node ProcDef children]
 applyProd (G.Node G.ProcCall (_:def:[])) =
   [Node ProcCall (applyProd def)]
 -- Should I use indexing instead of PM? Or just use arrays?
