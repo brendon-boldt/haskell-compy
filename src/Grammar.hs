@@ -63,7 +63,7 @@ getProds BinOp = [[lS "+"], [lS "-"], [lS "*"], [lS "/"]]
 getProds Val = [ [T' Lex.Name]
                , [T' Lex.NumLit] ]
                --, [ProcCall] ]
-getProds ProcDef = [[lKW "when", CondList, lS ",", T' Lex.Name, lKW "does", Def],
+getProds ProcDef = [[lKW "with", CondList, lS ",", T' Lex.Name, lKW "does", Def],
                     [T' Lex.Name, lKW "does", Def]]
 getProds Def = [ [lS "`", StL, lS "'"]
                , [T' Lex.Name] ]
@@ -71,6 +71,7 @@ getProds Def = [ [lS "`", StL, lS "'"]
 getProds CondList = [ [Cond, lKW "and", CondList]
                     , [Cond] ]
 getProds Cond = [[Expr, lKW "is", Expr],
+                 [Expr, lKW "is", Expr],
                  [Expr, lKW "is", lKW "less", lKW "than", Expr],
                  [Expr, lKW "is", lKW "greater", lKW "than", Expr]]
 

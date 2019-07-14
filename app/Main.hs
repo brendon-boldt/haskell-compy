@@ -23,5 +23,6 @@ main = do
   putStrLn $ Parse.showPS cst
   let ast = AST.buildAST (head $ Parse.nodes cst)
   putStrLn $ show ast
+  putStrLn ""
   CG.generateAsm ast
   hClose handle
