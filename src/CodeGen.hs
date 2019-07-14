@@ -24,11 +24,33 @@ data Cond = Cond { condexprs :: (A.Node, A.Node)
                  , condorder :: Ordering }
 
 data Arg = VarArg Asm.Store | ProcArg Proc
+--data Arg = VarArg Asm.Store | ProcArg Asm.Store Proc
+  deriving Show
 
 data Proc = Proc { procname :: String
                  , procdefs :: [([Cond], A.Node)]
                  --, args :: Map.Map String Asm.Store }
                  , args :: Map.Map String Arg }
+          | ProcRef Asm.Store Proc
+          -- | ProcRef Proc
+          -- | ProcRef { procname :: String }
+
+
+isProcRef :: Proc -> Bool
+isProcRef ProcRef{} = True
+isProcRef _ = False
+
+derefProc :: Proc -> Proc
+derefProc (ProcRef _ proc) = derefProc proc 
+derefProc proc = proc
+
+--procname' = procname . derefProc
+--procdefs' = undefined
+args' = args . derefProc
+
+instance Show Proc where
+  show Proc{procname=n} = "Proc " ++ n
+  show (ProcRef r p) = "ProcRef " ++ (show p) ++ " @ " ++ (show r)
 
 data CGState = CGState { vars :: Map.Map String Asm.Store
                        , procs :: Map.Map String Proc
@@ -70,7 +92,7 @@ handleNameExpr name = do
   let maybeVar = getVar cgs name
   case maybeVar of
     (Just var) -> w2f $ Asm.movToAcc var
-    otherwise  -> (trace name undefined)
+    otherwise  -> (trace ("Couldn't find " ++ name) undefined)
 
 makeCond :: A.Node -> Cond
 makeCond _ = undefined
@@ -101,25 +123,52 @@ addVarArg proc varName reg cgs =
       newMap = Map.insert (procname proc) newProc (procs cgs)
   in ((), cgs { procs = newMap })
 
-addProcArg :: Proc -> String -> Proc -> CGState -> ((), CGState)
-addProcArg proc procName procArg cgs =
-  -- It's okay if this fails
-  let newArgMap = Map.insert procName (ProcArg procArg) (args proc)
+addProcArg :: Proc -> String -> Asm.Store -> String -> CGState -> ((), CGState)
+addProcArg proc procName store procArg cgs =
+  -- It's okay if this fails -- deref here?
+  let refedProc = (procs cgs) Map.! procArg
+      newArgMap = Map.insert procName (ProcArg (ProcRef store refedProc)) (args proc)
       newProc = (proc { args = newArgMap })
       newMap = Map.insert (procname proc) newProc (procs cgs)
   in ((), cgs { procs = newMap })
 
+-- Can't I just use this (instead of the two above)
+addArg :: Proc -> String -> Arg -> CGState -> ((), CGState)
+addArg proc procName arg cgs =
+  let newArgMap = Map.insert procName arg (args proc)
+      newProc = (proc { args = newArgMap })
+      newMap = Map.insert (procname proc) newProc (procs cgs)
+  in ((), cgs { procs = newMap })
+
+nameIsProcType :: A.Node -> Bool
+nameIsProcType (A.Leaf (A.NameVal A.ProcType _)) = True
+nameIsProcType _ = False
+
+getProcName (A.Leaf (A.NameVal A.ProcType name)) = name
+getProcName _ = undefined
+ 
 -- TODO figure a better way to match args and regs
 handleArgAssign :: String -> (String, A.Node) -> StateT CGState IO ()
-handleArgAssign procName (varName, expr) = do
+handleArgAssign procName (argName, expr) = do
   cgs <- get
+  -- HERE these args probably need to be args'
   let proc = (procs cgs) Map.! procName
-  let reg = if Map.member varName (args proc)
-              then (args proc) Map.! varName
-              else Asm.argRegs !! (length $ args proc)
-  state (addVarArg proc varName reg)
-  build expr
-  w2f $ Asm.accToStore reg
+  let reg = if Map.member argName (args' proc)
+              then case (args' proc) Map.! argName of
+                VarArg reg -> reg
+                ProcArg (ProcRef reg _) -> reg
+                _ -> undefined
+              else Asm.argRegs !! (length $ args' proc)
+  let procArg = (procs cgs) Map.! argName
+  state (if nameIsProcType expr
+    then addProcArg proc argName reg (getProcName expr)
+    else addVarArg proc argName reg
+    )
+  if nameIsProcType expr
+    then case proc of
+        Proc{} -> w2f $ Asm.procToStore (getProcName expr) reg
+        _ -> undefined
+    else build expr >> (w2f $ Asm.accToStore reg)
   --return $ A.value varname
 
 filterVarArgs :: Map.Map a Arg -> Map.Map a Asm.Store
@@ -156,7 +205,14 @@ handleProcCall procArgs (A.Leaf (A.NameVal A.ProcType name)) = do
   mapM_ ((handleArgAssign name) . unpackArg) procArgs
   pushArgRegisters
   cgs <- get
-  w2f $ Asm.callName $ (procprefix cgs) ++ name
+  --let procName = (case (procs cgs) Map.! (trace (show (procs cgs) ++ " @ " ++name) name) of 
+  --                 Proc{procname=n} -> (procprefix cgs) ++ n
+  --                 proc -> procname' proc
+  --                 )
+  --w2f $ Asm.callName $ procName
+  case (procs cgs) Map.! name of 
+    Proc{procname=n} -> w2f $ Asm.callName $ (procprefix cgs) ++ n
+    (ProcRef reg _) -> w2f $ Asm.callStore reg
 
 makeVal :: A.Node -> CGState -> Asm.Store
 makeVal (A.Leaf (A.NameVal _ name)) cgs =
@@ -209,13 +265,15 @@ buildProcs final init = do
   -- Temporary simplifying assumption: no conds, single def
   --forM_ (Map.keys $ procs final) $ \name -> do
     --forM_ ((procs final) Map.! name) $ \proc -> do
-  forM_ (procs final) $ \proc -> do
+  let nonRefProcs = Map.filter (not . isProcRef) (procs final)
+  forM_ nonRefProcs $ \proc -> do
     let name = procname proc
     (cgwrite init) $ Asm.beginProc $ (procprefix final) ++ name
     let newInit = init { procprefix = (procprefix init) ++ name ++ "_"
-                       , vars = filterVarArgs $ args proc }
+                       , vars = filterVarArgs $ args proc
+                       , procs = filterProcArgs $ args proc }
     -- TODO make this accomodate conds
-    buildHelper newInit (snd $ head $ procdefs proc)
+    buildHelper newInit (snd $ head $ procdefs  proc)
       
 
 buildHelper :: CGState -> A.Node -> IO ()

@@ -16,7 +16,7 @@ if' True  x _ = x
 if' False _ y = y
 
 --data Node = Node Sym [Node] |
-data Node = Node { sym :: Sym, children ::  [Node] } |
+data Node = Node { sym :: Sym, children :: [Node] } |
   Leaf { value :: Value } |
   Wrapper G.Sym [Node] |
   ValWrapper G.Node
@@ -33,6 +33,8 @@ data Value =
   OrderVal Ordering -- ?
   -- It seems to me like we need just a plain-old `Name`, but I will let that
   -- slide for now.
+  -- Would it be better to have a ProcName newtype for String instead of a
+  -- DType? 
 
 instance Show Value where
   --show (FloatVal x) = "FloatVal" ++ (show x)

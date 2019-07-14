@@ -73,11 +73,17 @@ adjustRsp val = [ "\n    addq  $" , x, ", %rsp\n" ]
 accToStore :: Store -> [T.Text]
 accToStore s = [ "    movq  %rax,", showAsm s, "\n" ]
 
+procToStore :: String -> Store -> [T.Text]
+procToStore str sto = [ "    lea   ", T.pack str, "(%rip), ", showAsm sto, "\n" ]
+
 storeToStore :: Store -> Store -> [T.Text]
 storeToStore s d = [ "    movq  ", showAsm s, ",", showAsm d, "\n" ]
 
 callName :: String -> [T.Text]
 callName name = [ "    call  ", T.pack name,"\n" ]
+
+callStore :: Store -> [T.Text]
+callStore s = [ "    call  *", showAsm s,"\n" ]
 
 makeProc :: String -> [T.Text]
 makeProc name = [ T.pack name, ":\n"
