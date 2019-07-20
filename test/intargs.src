@@ -1,0 +1,7 @@
+with iA and iB and iC, pA does `show iA. show iB + iC.'.
+with iA and iC, pB does `show iA. show iC.'.
+given iA is 1 and iB is 2 and iC is 3, do pA.
+given iA is 9 and iC is 88, do pB.
+given iA is 2 and iB is 3 and iC is 4, do pA.
+
+0.

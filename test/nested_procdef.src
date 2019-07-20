@@ -1,0 +1,12 @@
+pB does `show 4.'.
+pA does `
+    show 1.
+    pB does `show 3.'.
+    show 9.
+    do pB.
+'.
+do pB.
+do pA.
+do pB.
+
+0.

@@ -19,3 +19,8 @@ profile:
 	@rm -f asm/main.s
 	@stack build --profile
 	@stack exec -- haskell-compy-exe $(source) +RTS -h -p
+
+
+.PHONY: test
+test:
+	@bash test.sh

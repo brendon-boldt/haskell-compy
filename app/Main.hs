@@ -1,6 +1,7 @@
 import System.IO
 import System.Environment
 import Data.Maybe
+import Control.Exception (assert)
 
 import qualified Lex as Lex
 import qualified Parse as Parse
@@ -19,7 +20,10 @@ main = do
   let tokens = Lex.chadLex contents
   --putStr (show tokens)
   Lex.handleLex tokens
+  --let rawCst = head $ Parse.parse tokens
+  --let cst = assert (not $ null $ Parse.nodes rawCst) rawCst
   let cst = head $ Parse.parse tokens
+  -- Required for catch parse errors (as of now)
   putStrLn $ Parse.showPS cst
   let ast = AST.buildAST (head $ Parse.nodes cst)
   putStrLn $ show ast

@@ -1,0 +1,6 @@
+pA does `show 1. show 2.'.
+do pA.
+pB does `show 23.'.
+show do pB.
+
+0.

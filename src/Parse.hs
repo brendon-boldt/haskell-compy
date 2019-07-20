@@ -138,5 +138,5 @@ parse lexTokens = do
 
 showPS :: PS -> String
 showPS ps | Parse.error ps == Error = 
-  "Parse failed at " ++ (show $ lastToken ps)
+  Prelude.error $ "Parse failed at " ++ (show $ lastToken ps)
 showPS ps = show $ head $ nodes ps

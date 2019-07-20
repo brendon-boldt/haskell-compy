@@ -1,0 +1,9 @@
+let iA be 3.
+let iB be 2 + 4.
+let iC be 0.
+show iA.
+show iA + iB.
+let iC be iA.
+show iC.
+
+0.
