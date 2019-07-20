@@ -70,10 +70,11 @@ getProds Def = [ [lS "`", StL, lS "'"]
 
 getProds CondList = [ [Cond, lKW "and", CondList]
                     , [Cond] ]
-getProds Cond = [[Expr, lKW "is", Expr],
-                 [Expr, lKW "is", Expr],
-                 [Expr, lKW "is", lKW "less", lKW "than", Expr],
-                 [Expr, lKW "is", lKW "greater", lKW "than", Expr]]
+getProds Cond = [ [T' Lex.Name]
+                , [T' Lex.Name, lKW "like", T' Lex.Name]
+                , [T' Lex.Name, lKW "being", Expr]
+                , [T' Lex.Name, lKW "being", lKW "less", lKW "than", Expr]
+                , [T' Lex.Name, lKW "being", lKW "greater", lKW "than", Expr] ]
 
 --getProds Arg = [ [Def], [Expr] ]
 getProds ArgAssign = [ [T' Lex.Name, lKW "is", Expr]

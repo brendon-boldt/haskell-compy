@@ -75,7 +75,7 @@ makeLeaf (G.Leaf _ (Lex.Token Lex.NumLit td)) isExpr =
   Leaf $ dtype $ (read $ Lex.value td :: Int)
     where dtype = if' isExpr IntExpr IntVal
 
-makeLeaf x _ = (trace (show x) undefined)
+makeLeaf x _ = error $ "Could not make leaf for " ++ (show x)
 
 toBinExpr :: G.Node -> Sym
 toBinExpr (G.Leaf _ (Lex.Token _ td)) 
@@ -100,6 +100,8 @@ applyProd (G.Node G.ArgAssign (name:_:arg:[])) =
 applyProd (G.Node G.CondList (n0:_:n1:[])) =
   (head (applyProd n0)) : (applyProd n1)
 applyProd (G.Node G.CondList (n0:[])) = applyProd n0
+applyProd (G.Node G.Cond (name:[])) =
+  [Node Cond $ applyProd name]
 applyProd (G.Node G.Cond (name:_:arg:[])) =
   [Node Cond $ concatMap applyProd [name, arg]]
 
@@ -121,7 +123,7 @@ applyProd gl@(G.Leaf (G.T' Lex.Name) _) = [makeLeaf gl False]
 applyProd (G.Node G.ProcDef (name:_:def:[])) =
   [Node ProcDef ((makeLeaf name False) : (applyProd def))]
 applyProd (G.Node G.ProcDef (_:conds:_:name:_:def:[])) =
-  let children = (applyProd conds) ++ ((makeLeaf name False) : (applyProd def))
+  let children = (Node CondList (applyProd conds)) : ((makeLeaf name False) : (applyProd def))
   in [Node ProcDef children]
 applyProd (G.Node G.ProcCall (_:def:[])) =
   [Node ProcCall (applyProd def)]
@@ -137,7 +139,7 @@ applyProd (G.Leaf _ _) = []
 
 --applyProd (G.Node gs ns) = [Wrapper gs (concatMap applyProd ns)]
 --applyProd n@(G.Leaf _ _) = [ValWrapper n]
-applyProd x = (trace (show x) undefined)
+applyProd x = error $ "No AST production for " ++ show x
 
 buildAST :: G.Node -> Node
 buildAST root = head $ applyProd root

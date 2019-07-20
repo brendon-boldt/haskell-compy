@@ -40,8 +40,8 @@ data TType =
   InvalidToken 
     deriving (Show, Eq)
 
-keywords = ["let", "be", "show", "is", "does", "do", "given",
-            "greater", "less", "than", "with", "and"]
+keywords = ["let", "be", "show", "is", "does", "do", "given", "like",
+            "greater", "less", "than", "with", "and", "being"]
 symbols =  "*/,.+-'`()"
 
 isWhitespace s = all (==' ') s
