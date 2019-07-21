@@ -1,14 +1,22 @@
 
 stack build --fast --verbosity warn --profile || exit
 
+result () {
+    if [[ $1 == Passed ]]; then
+        printf "\e[32m%20s\e[0m\n" "$1"
+    else
+        printf "\e[31m%20s\e[0m\n" "$1"
+    fi
+}
+
 for src in $(ls test/*.src); do
-    echo -n "$(basename $src) . . . "
+    printf "%-30s" "$(basename $src)"
     expected=${src%.src}.out
     rm -f asm/main.s
     stack exec -- haskell-compy-exe $src +RTS -xc 2> error.out > /dev/null
     #stack exec -- haskell-compy-exe $src 2> error.out > /dev/null
     if [[ $? != 0 ]]; then
-        echo -e "\e[31mFailed (compilation)\e[0m"
+        result "Failed (compilation)"
         cat error.out
         continue
     fi
@@ -21,18 +29,18 @@ for src in $(ls test/*.src); do
     asm/./main.out > actual.out
     exitcode=$?
     if [[ $exitcode != 0 ]]; then
-        echo -e "\e[31mFailed (non-zero exit)\e[0m"
+        result "Failed (non-zero exit)"
         cat actual.out
         continue
     fi
     diffout=$(diff -y -W10 actual.out "$expected")
     if [[ $? != 0 ]]; then
-        echo -e "\e[31mFailed (output)\e[0m"
+        result "Failed (output)"
         printf "$diffout"
         echo
         continue
     fi
-    echo -e "\e[32mPassed\e[0m"
+    result Passed
 done
 
 rm -f actual.out error.out
