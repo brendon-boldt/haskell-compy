@@ -1,0 +1,7 @@
+pA does `show 4.'.
+pB does `show 3.'.
+with pX like pA, pC does `show 1 + do pX.'.
+given pX does pA, do pC.
+given pX does pB, do pC.
+
+0.

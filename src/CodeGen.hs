@@ -85,6 +85,7 @@ getVar cgs name =
 getStackSpace :: CGState -> Int
 getStackSpace cgs = 8 - (sp cgs)
 
+-- TODO rename this to something less misleading
 newStackVar :: Monad m => String -> StateT CGState m Asm.Store
 newStackVar name = state (\cgs ->
   let newSP = sp cgs - 8
@@ -93,13 +94,26 @@ newStackVar name = state (\cgs ->
   -- The new stack var will always be 0 offset from %rsp
   in (Asm.Stack 0, cgs { vars = newVarMap, sp = newSP }))
 
+
+regVarToStack :: Monad m => String -> Var -> StateT CGState m Asm.Store
+regVarToStack name var = state (\cgs ->
+  let newSP = sp cgs - 8
+      newStore = Asm.Stack newSP
+      newVar = case var of
+        (IntVar _)   -> IntVar newStore
+        (ProcVar pr@ProcRef{}) -> ProcVar $ pr { refstore = newStore }
+      newVarMap = Map.insert name newVar (vars cgs)
+  -- The new stack var will always be 0 offset from %rsp
+  in (Asm.Stack 0, cgs { vars = newVarMap, sp = newSP }))
+
+
 handleLet :: A.Node -> StateT CGState IO ()
 handleLet (A.Leaf (A.NameVal _ name)) = do
   cgs <- get
   let maybeVar = getVar cgs name
   case maybeVar of
     (Just var) -> w2f $ Asm.accToStore var
-    otherwise  -> do
+    Nothing    -> do
       w2f $ Asm.newStackVar
       newStackVar name >>= (w2f . Asm.accToStore)
 
@@ -117,12 +131,20 @@ makeParam (A.Node A.Cond ((A.Leaf (A.NameVal A.IntType name)):_))
   = (Param { paramvar = name, procorcond = Right Nothing }, IntVar)
 -- TODO actualy take conds into account
 -- And procs...
+makeParam (A.Node A.Cond ((A.Leaf (A.NameVal A.ProcType name)):[]))
+  = error $ "Proc param " ++ name ++  " must be \"like\" a prototype"
+makeParam (A.Node A.Cond ((A.Leaf (A.NameVal A.ProcType name))
+  :(A.Leaf (A.NameVal A.ProcType protoname))
+  :[]))
+  = (Param { paramvar = name, procorcond = Left (error "When do we need this proc?") }, \s -> ProcVar (ProcRef { refstore = s, argmap = (error "Replace this when necessary") }))
+  -- = error $ name ++ " with proto " ++ protoname
 makeParam x = error (show x)
 
 --handleAdditionalProcDef :
 handleNewProcDef :: String ->  A.Node -> [A.Node] -> Proc
 handleNewProcDef name procDef paramNodes =
   let paramsAndArgs = map makeParam $ paramNodes
+      -- Sort these first so args are always in the same order?
       uniquePaa = nubBy (\x y -> paramvar (fst x) == (paramvar $ fst y)) paramsAndArgs
       names = map (paramvar . fst) uniquePaa
       vars = zipWith id (map snd uniquePaa) Asm.argRegs
@@ -161,33 +183,19 @@ nameIsProcType _ = False
 
 getProcName (A.Leaf (A.NameVal A.ProcType name)) = name
 getProcName _ = undefined
- 
---filterVarArgs :: [Param] -> VarMap
---filterVarArgs =
---  let isVar x = case procorcond x of (Right _) -> True; _ -> False
---      toPair x = (paramvar x, store x)
---  in  Map.fromList . (map toPair) . (filter isVar)
---
---filterProcArgs :: Map.Map a Param -> Map.Map a Proc
---filterProcArgs = undefined
----- We just need the arg mapping
---  --let isProc x = case x of (ProcArg _) -> True; _ -> False
---  --    toProc x = case x of (ProcArg p) -> p
---  --in  (Map.map toProc) . (Map.filter isProc)
 
-
--- TODO I forgot what this does
+-- Push argument registers to the stack in preparation for a proc call
 pushArgRegisters :: StateT CGState IO ()
 pushArgRegisters =
   let
-    toStack key store = case store of
+    toStack key var = case varToStore var of
       reg@(Asm.Register _) -> do
         w2f $ Asm.newStackVar
-        newStore <- newStackVar key
+        newStore <- regVarToStack key var
         w2f $ Asm.storeToStore reg newStore
       _ -> return ()
   -- Could this just be mapM?
-    stores = (Map.map varToStore) . (Map.filter isStoreVar) . vars
+    stores = (Map.filter isStoreVar) . vars
   in get >>= (sequence_ . (Map.mapWithKey toStack) . stores)
 
 unpackArg :: VarMap -> A.Node -> (Var, A.Node)
@@ -202,6 +210,7 @@ handleProcCall rawArgs (A.Leaf (A.NameVal A.ProcType procName)) = do
   cgs <- get
   let proc = case (vars cgs) Map.! procName of
                 (ProcVar proc) -> proc
+                x -> error $ "here: " ++ (show $ vars cgs)
   let args = map (unpackArg (argmap proc)) rawArgs
   -- This will fail if it is not a procref
   let assign x = case x of

@@ -97,6 +97,7 @@ applyProd (G.Node G.ArgList (n0:[])) = applyProd n0
 applyProd (G.Node G.ArgAssign (name:_:arg:[])) =
   [Node ArgAssign $ concatMap applyProd [name, arg]]
 
+-- TODO proc "like" is not enforced
 applyProd (G.Node G.CondList (n0:_:n1:[])) =
   (head (applyProd n0)) : (applyProd n1)
 applyProd (G.Node G.CondList (n0:[])) = applyProd n0
