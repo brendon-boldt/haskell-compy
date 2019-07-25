@@ -1,0 +1,41 @@
+with iX and iY, pA does `iX + iX + iY.'.
+with iX and iY, pC does `iY + iX + iY.'.
+with pX like pA, pB does `show given iX is 3 and iY is 20, do pX.'.
+
+given pX does pA, do pB.
+given pX does pC, do pB.
+
+with
+    pX like pA and
+    pY like pA and
+    iX and
+    iY,
+    pD does `
+        let iA be
+        given
+            iX is iX and
+            iY is iY,
+            do pX.
+        let iB be 
+        given
+            iX is iX and
+            iY is iY,
+            do pY.
+        iA + iB.
+    '.
+
+let iM be 3.
+let iN be 20.
+
+show given
+    pX does pA and 
+    pY does pC and
+    iX is iN and
+    iY is iM,
+    do pD.
+
+
+(I don't know why I set the grammar up like this, but I need to start arithemtic
+expressions with a Val and not an Expr)
+
+0.

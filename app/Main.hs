@@ -24,9 +24,9 @@ main = do
   --let cst = assert (not $ null $ Parse.nodes rawCst) rawCst
   let cst = head $ Parse.parse tokens
   -- Required for catch parse errors (as of now)
-  putStrLn $ Parse.showPS cst
+  putStr $ Parse.showPS cst
   let ast = AST.buildAST (head $ Parse.nodes cst)
-  putStrLn $ show ast
+  --putStrLn $ show ast
   putStrLn ""
   CG.generateAsm ast
   hClose handle

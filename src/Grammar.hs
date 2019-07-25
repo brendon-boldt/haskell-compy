@@ -62,7 +62,7 @@ getProds Expr = [ [lKW "let", T' Lex.Name, lKW "be", Expr]
 getProds BinOp = [[lS "+"], [lS "-"], [lS "*"], [lS "/"]]
 getProds Val = [ [T' Lex.Name]
                , [T' Lex.NumLit] ]
-               --, [ProcCall] ]
+               --, [ProcCall] ] -- This was commented out, and I don't know why.
 getProds ProcDef = [[lKW "with", CondList, lS ",", T' Lex.Name, lKW "does", Def],
                     [T' Lex.Name, lKW "does", Def]]
 getProds Def = [ [lS "`", StL, lS "'"]

@@ -150,4 +150,5 @@ handleLex :: [Token] -> IO ()
 handleLex tokens =
   if' (any isInvalidToken tokens)
     (fail (formatInvalidTokens tokens))
-    (putStr "Lexing complete.\n")
+    return ()
+    --(putStr "Lexing complete.\n")

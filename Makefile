@@ -6,7 +6,7 @@ default:
 	@rm -f asm/main.s
 	@stack build --verbosity warn --profile
 	@stack exec -- haskell-compy-exe $(source) +RTS -xc
-	@gcc -o asm/main.out asm/main.s asm/lib.s
+	@gcc -ggdb -o asm/main.out asm/main.s asm/lib.s
 	@asm/./main.out
 
 .PHONY: asm

@@ -4,7 +4,7 @@ module CodeGen
   ) where
 
 --import Data.HashMap.Strict
-import Data.List (intersperse, nubBy)
+import Data.List (intersperse, sortOn, groupBy)
 import qualified Data.Map.Strict as Map
 import qualified Data.Text.IO as TIO
 import qualified Data.Text as T
@@ -23,12 +23,6 @@ import qualified Asm as Asm
 data Var = IntVar Asm.Store | ProcVar Proc
   deriving Show
 
-varToStore :: Var -> Asm.Store
-varToStore (IntVar s) = s
-varToStore (ProcVar ProcRef{refstore=s}) = s
-varToStore (ProcVar Proc{procname=n}) =
-  error $ "Nonref method " ++ n ++ " has no store!"
-
 type VarMap = Map.Map String Var
 
                   -- paramname?
@@ -43,15 +37,30 @@ data Param = Param { paramvar :: String
 
 data Proc = Proc { procname :: String
                  , procdefs :: [([Param], A.Node)]
-                 , argmap :: VarMap }
+                 --, argmap :: VarMap }
+                 , argmap :: Either VarMap String }
           | ProcRef { refstore :: Asm.Store
-                    , argmap :: VarMap }
+                    --, argmap :: VarMap }
+                    , argmap :: Either VarMap String }
+
+justVarMap :: Either VarMap String -> VarMap
+justVarMap (Left vm) = vm
+justVarMap (Right s) = error $ s ++ " isn't a VarMap!"
 
 -- START should pstroes be more like Map.Map String SkeletalParam
 -- data SkeletalParam = VarParam Asm.Store | ProcParam Asm.Store Proc
 --                                                               (ProcRef)
 -- Maybe I need to reintroduce cond
 
+varToStore :: Var -> Asm.Store
+varToStore (IntVar s) = s
+varToStore (ProcVar ProcRef{refstore=s}) = s
+varToStore (ProcVar Proc{procname=n}) =
+  error $ "Nonref method " ++ n ++ " has no store!"
+
+varToProc :: Var -> Proc
+varToProc (ProcVar proc) = proc
+varToProc _ = error "That wasn't a Proc!"
 
 isNonRefProc :: Var -> Bool
 isNonRefProc (ProcVar Proc{}) = True
@@ -75,12 +84,17 @@ data CGState = CGState { vars :: VarMap
                        , sp :: Int
                        , cgwrite :: [T.Text] -> IO () }
 
+
+resolveStore :: CGState -> Asm.Store -> Asm.Store
+resolveStore cgs (Asm.Stack x) = Asm.Stack $ x - (sp cgs)
+resolveStore cgs s = s
+
 getVar :: CGState -> String -> Maybe Asm.Store
 getVar cgs name =
   let var = Map.lookup name (vars cgs)
-  in case var of
-       (Just (IntVar (Asm.Stack x))) -> Just $ Asm.Stack $ x - (sp cgs)
-       Nothing -> Nothing
+  in  case var of
+    (Just (IntVar s)) -> Just $ resolveStore cgs s
+    Nothing  -> Nothing
 
 getStackSpace :: CGState -> Int
 getStackSpace cgs = 8 - (sp cgs)
@@ -136,7 +150,7 @@ makeParam (A.Node A.Cond ((A.Leaf (A.NameVal A.ProcType name)):[]))
 makeParam (A.Node A.Cond ((A.Leaf (A.NameVal A.ProcType name))
   :(A.Leaf (A.NameVal A.ProcType protoname))
   :[]))
-  = (Param { paramvar = name, procorcond = Left (error "When do we need this proc?") }, \s -> ProcVar (ProcRef { refstore = s, argmap = (error "Replace this when necessary") }))
+  = (Param { paramvar = name, procorcond = Left (error "When do we need this proc?") }, \s -> ProcVar (ProcRef { refstore = s, argmap = Right protoname }))
   -- = error $ name ++ " with proto " ++ protoname
 makeParam x = error (show x)
 
@@ -144,17 +158,31 @@ makeParam x = error (show x)
 handleNewProcDef :: String ->  A.Node -> [A.Node] -> Proc
 handleNewProcDef name procDef paramNodes =
   let paramsAndArgs = map makeParam $ paramNodes
-      -- Sort these first so args are always in the same order?
-      uniquePaa = nubBy (\x y -> paramvar (fst x) == (paramvar $ fst y)) paramsAndArgs
+      uniquePaa = (sortOn $ paramvar . fst)
+                $ (map head)
+                $ (groupBy (\x y ->
+                  (paramvar $ fst x) == (paramvar $ fst y)))
+                paramsAndArgs
       names = map (paramvar . fst) uniquePaa
       vars = zipWith id (map snd uniquePaa) Asm.argRegs
       argMap = Map.fromList $ zip names vars
       params = map fst paramsAndArgs
-  in  Proc name [(params, procDef)] argMap
+  in  Proc name [(params, procDef)] (Left argMap)
 
 addProc :: String -> Proc -> CGState -> ((), CGState)
 addProc name proc cgs =
   let newMap = Map.insert name (ProcVar proc) (vars cgs)
+  in  ((), cgs { vars = newMap })
+
+resolveArgMaps :: String -> Proc -> CGState -> ((), CGState)
+resolveArgMaps name proc cgs = 
+  let replaceArgMap arg = case arg of
+        (ProcVar pr@ProcRef{argmap=(Right proto)}) -> ProcVar $ pr { argmap = argmap $ varToProc $ (vars cgs) Map.! proto }
+        x -> x
+      newArgMap = Map.map replaceArgMap (justVarMap $ argmap proc)
+      newProc = proc { argmap = Left newArgMap }
+      --newMap = Map.insert name (ProcVar proc) (vars cgs)
+      newMap = Map.insert name (ProcVar newProc) (vars cgs)
   in  ((), cgs { vars = newMap })
 
 -- This only mutates the CGState and does not write any assembly because the
@@ -168,6 +196,8 @@ handleProcDef condNodes (A.Leaf (A.NameVal A.ProcType name)) def = do
                   (Just proc) -> error "I can't do this yet."
                   otherwise -> handleNewProcDef name def condNodes
   state (addProc name newProc)
+  state (resolveArgMaps name newProc)
+  -- [resolve like reference]
 
 -- Can't I just use this (instead of the two above)
 --addParam :: Proc -> String -> Param -> CGState -> ((), CGState)
@@ -185,6 +215,7 @@ getProcName (A.Leaf (A.NameVal A.ProcType name)) = name
 getProcName _ = undefined
 
 -- Push argument registers to the stack in preparation for a proc call
+-- pushOldArgRegisters ?
 pushArgRegisters :: StateT CGState IO ()
 pushArgRegisters =
   let
@@ -211,7 +242,7 @@ handleProcCall rawArgs (A.Leaf (A.NameVal A.ProcType procName)) = do
   let proc = case (vars cgs) Map.! procName of
                 (ProcVar proc) -> proc
                 x -> error $ "here: " ++ (show $ vars cgs)
-  let args = map (unpackArg (argmap proc)) rawArgs
+  let args = map (unpackArg (justVarMap $ argmap proc)) rawArgs
   -- This will fail if it is not a procref
   let assign x = case x of
                   (ProcVar ProcRef{refstore=rs}, expr) ->
@@ -219,11 +250,14 @@ handleProcCall rawArgs (A.Leaf (A.NameVal A.ProcType procName)) = do
                   (IntVar store, expr) ->
                     build expr >> (w2f $ Asm.accToStore store)
                  -- This is questionable 
-  mapM_ assign args
   pushArgRegisters
-  case proc of 
+  mapM_ assign args
+  updatedCgs <- get
+  let updatedProc = case (vars updatedCgs) Map.! procName of
+                      (ProcVar proc) -> proc
+  case updatedProc of 
     Proc{procname=n} -> w2f $ Asm.callName $ (procprefix cgs) ++ n
-    ProcRef{refstore=store} -> w2f $ Asm.callStore store
+    ProcRef{refstore=store} -> w2f $ Asm.callStore (resolveStore updatedCgs store)
 
 makeVal :: A.Node -> CGState -> Asm.Store
 makeVal (A.Leaf (A.NameVal _ name)) cgs =
@@ -281,7 +315,7 @@ buildProcs final init = do
     let name = procname proc
     (cgwrite init) $ Asm.beginProc $ (procprefix final) ++ name
     let newInit = init { procprefix = (procprefix init) ++ name ++ "_"
-                       , vars = argmap proc
+                       , vars = justVarMap $ argmap proc
                        }
                        --, procs = filterProcArgs $ fst $ procdefs proc }
                        --, procs = undefined }
