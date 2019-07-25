@@ -175,7 +175,7 @@ addProc name proc cgs =
   in  ((), cgs { vars = newMap })
 
 resolveArgMaps :: String -> Proc -> CGState -> ((), CGState)
-resolveArgMaps name proc cgs = 
+resolveArgMaps name proc cgs =
   let replaceArgMap arg = case arg of
         (ProcVar pr@ProcRef{argmap=(Right proto)}) -> ProcVar $ pr { argmap = argmap $ varToProc $ (vars cgs) Map.! proto }
         x -> x
@@ -186,12 +186,12 @@ resolveArgMaps name proc cgs =
   in  ((), cgs { vars = newMap })
 
 -- This only mutates the CGState and does not write any assembly because the
--- procedure definitions will all happen at the end. 
+-- procedure definitions will all happen at the end.
 handleProcDef :: [A.Node] -> A.Node -> A.Node -> StateT CGState IO ()
 handleProcDef condNodes (A.Leaf (A.NameVal A.ProcType name)) def = do
   cgs <- get
   -- How do we know this is a Proc?
-  let maybeProc = Map.lookup name (vars cgs) 
+  let maybeProc = Map.lookup name (vars cgs)
   let newProc = case maybeProc of
                   (Just proc) -> error "I can't do this yet."
                   otherwise -> handleNewProcDef name def condNodes
@@ -236,6 +236,15 @@ unpackArg varMap (A.Node A.ArgAssign ((A.Leaf (A.NameVal dtype name)):expr:[])) 
               Nothing -> error $ "Could not find argument: " ++ name
   in  (var, expr)
 
+procToStore :: CGState -> String -> Asm.Store -> StateT CGState IO ()
+procToStore cgs argName targetStore =
+  case (vars cgs) Map.! argName of
+    (ProcVar Proc{procname=n}) -> w2f $ Asm.procToStore n targetStore
+    (ProcVar ProcRef{refstore=rs}) ->
+      w2f $ Asm.storeToStore (resolveStore cgs rs) (resolveStore cgs targetStore)
+    -- TODO Do I need type safe stores?
+    x -> error $ (show x) ++ " cannot be moved to stored as if it were a proc."
+
 handleProcCall :: [A.Node] -> A.Node -> StateT CGState IO ()
 handleProcCall rawArgs (A.Leaf (A.NameVal A.ProcType procName)) = do
   cgs <- get
@@ -245,17 +254,20 @@ handleProcCall rawArgs (A.Leaf (A.NameVal A.ProcType procName)) = do
   let args = map (unpackArg (justVarMap $ argmap proc)) rawArgs
   -- This will fail if it is not a procref
   let assign x = case x of
+                  --(ProcVar ProcRef{refstore=rs}, expr) ->
+                  --  w2f $ Asm.procToStore (getProcName expr) rs
                   (ProcVar ProcRef{refstore=rs}, expr) ->
-                    w2f $ Asm.procToStore (getProcName expr) rs
+                    procToStore cgs (getProcName expr) rs
+                    --w2f $ Asm.procToStore (getProcName expr) rs
                   (IntVar store, expr) ->
                     build expr >> (w2f $ Asm.accToStore store)
-                 -- This is questionable 
+                 -- This is questionable
   pushArgRegisters
   mapM_ assign args
   updatedCgs <- get
-  let updatedProc = case (vars updatedCgs) Map.! procName of
+  let updatedProc = case (trace (show (vars updatedCgs)) (vars updatedCgs)) Map.! procName of
                       (ProcVar proc) -> proc
-  case updatedProc of 
+  case updatedProc of
     Proc{procname=n} -> w2f $ Asm.callName $ (procprefix cgs) ++ n
     ProcRef{refstore=store} -> w2f $ Asm.callStore (resolveStore updatedCgs store)
 
@@ -321,7 +333,7 @@ buildProcs final init = do
                        --, procs = undefined }
     -- TODO make this accomodate conds
     buildHelper newInit (snd $ head $ procdefs  proc)
-      
+
 
 buildHelper :: CGState -> A.Node -> IO ()
 buildHelper initState root = do
