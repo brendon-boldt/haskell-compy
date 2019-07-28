@@ -28,7 +28,7 @@ type VarMap = Map.Map String Var
                   -- paramname?
 data Param = Param { paramvar :: String
                    --, store :: Asm.Store
-                   , procorcond :: Either Proc (Maybe A.Node) }
+                   , cond :: Maybe (Ordering, A.Node) }
                    deriving Show
 
 
@@ -139,20 +139,29 @@ handleNameExpr name = do
     (Just var) -> w2f $ Asm.movToAcc var
     Nothing  -> error $ "Could not getVar " ++ name
 
+
 makeParam :: A.Node -> (Param, Asm.Store -> Var)
-makeParam (A.Node A.Cond ((A.Leaf (A.NameVal A.IntType name)):_))
-  -- = Param { paramvar = name, store = store, procorcond = Right Nothing }
-  = (Param { paramvar = name, procorcond = Right Nothing }, IntVar)
--- TODO actualy take conds into account
--- And procs...
+makeParam (A.Node A.Cond ((A.Leaf (A.NameVal A.IntType name)):[]))
+  = (Param { paramvar = name, cond = Nothing }, IntVar)
+
+makeParam (A.Node A.Cond ( (A.Leaf (A.NameVal A.IntType name))
+                         : (A.Leaf (A.OrderVal order))
+                         -- : (A.Node A.Expr condExpr)
+                         : condExpr
+                         : []))
+  = (Param { paramvar = name, cond = Just (order, condExpr) }, IntVar)
+
 makeParam (A.Node A.Cond ((A.Leaf (A.NameVal A.ProcType name)):[]))
   = error $ "Proc param " ++ name ++  " must be \"like\" a prototype"
-makeParam (A.Node A.Cond ((A.Leaf (A.NameVal A.ProcType name))
-  :(A.Leaf (A.NameVal A.ProcType protoname))
-  :[]))
-  = (Param { paramvar = name, procorcond = Left (error "When do we need this proc?") }, \s -> ProcVar (ProcRef { refstore = s, argmap = Right protoname }))
-  -- = error $ name ++ " with proto " ++ protoname
-makeParam x = error (show x)
+
+makeParam (A.Node A.Cond ( (A.Leaf (A.NameVal A.ProcType name))
+                         : (A.Leaf (A.NameVal A.ProcType protoname))
+                         : []))
+  = (Param { paramvar = name, cond = (error "When do we need this proc?") }, \s -> ProcVar (ProcRef { refstore = s, argmap = Right protoname }))
+
+--makeParam x = error (show x)
+makeParam x = error "Could not makeParam."
+
 
 --handleAdditionalProcDef :
 handleNewProcDef :: String ->  A.Node -> [A.Node] -> Proc

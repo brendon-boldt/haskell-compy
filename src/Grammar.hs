@@ -14,34 +14,6 @@ data Sym = S | StL | St | Expr | Val |
   T' Lex.TType
   deriving (Show)
 
-{- Grammar -
-
-S = StL EOF
-StL = St StL
-    | St
-St = Expr "."
-   | ProcDef "."
-Expr = "let" Name "be" Expr
-     | "show" Expr
-     | Val
-     | Val "+" Expr
-     | Val "-" Expr
-     --| ProcCall
-Val = Name | NumLit | ProcCall (?)
-
-ProcDef = "when" Cond Name "does" Def
-        | Name "does" Def
-Def = "`" StL "'"
-    | Name
-Cond = Expr "is" Expr
-     | Expr "is" "greater" "than" Expr
-     | Expr "is" "less" "than" Expr
-
-ProcCall = "given" Name "is" Expr "do" Def
-         | "do" Def
-
--  End Grammar -}
-
 --type LKW = Lex.Keyword
 lKW = T Lex.Keyword
 lS = T Lex.Symbol
@@ -73,8 +45,10 @@ getProds CondList = [ [Cond, lKW "and", CondList]
 getProds Cond = [ [T' Lex.Name]
                 , [T' Lex.Name, lKW "like", T' Lex.Name]
                 , [T' Lex.Name, lKW "being", Expr]
-                , [T' Lex.Name, lKW "being", lKW "less", lKW "than", Expr]
-                , [T' Lex.Name, lKW "being", lKW "greater", lKW "than", Expr] ]
+                , [T' Lex.Name, lKW "less", lKW "than", Expr]
+                , [T' Lex.Name, lKW "greater", lKW "than", Expr] ]
+                -- , [T' Lex.Name, lKW "being", lKW "less", lKW "than", Expr]
+                -- , [T' Lex.Name, lKW "being", lKW "greater", lKW "than", Expr] ]
 
 --getProds Arg = [ [Def], [Expr] ]
 getProds ArgAssign = [ [T' Lex.Name, lKW "is", Expr]

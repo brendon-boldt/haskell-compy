@@ -98,13 +98,27 @@ applyProd (G.Node G.ArgAssign (name:_:arg:[])) =
   [Node ArgAssign $ concatMap applyProd [name, arg]]
 
 -- TODO proc "like" is not enforced
-applyProd (G.Node G.CondList (n0:_:n1:[])) =
+applyProd (G.Node G.CondList ( n0
+                             : _
+                             : (G.Leaf (G.T Lex.Keyword "and") _)
+                             : n1
+                             : [])) =
   (head (applyProd n0)) : (applyProd n1)
 applyProd (G.Node G.CondList (n0:[])) = applyProd n0
 applyProd (G.Node G.Cond (name:[])) =
   [Node Cond $ applyProd name]
-applyProd (G.Node G.Cond (name:_:arg:[])) =
+applyProd (G.Node G.Cond ( name
+                         : (G.Leaf (G.T Lex.Keyword "being") _)
+                         : arg
+                         : [])) =
   [Node Cond $ concatMap applyProd [name, arg]]
+applyProd (G.Node G.Cond ( name
+                         -- : (G.Leaf (G.T Lex.Keybword order) _)
+                         : order@(G.Leaf _ _)
+                         : (G.Leaf (G.T Lex.Keyword "than") _)
+                         : arg
+                         : [])) =
+  [Node Cond $ concatMap applyProd [name, order, arg]]
 
 applyProd (G.Node G.Expr (gl@(G.Leaf _ _):gls))
   | isLet gl = [Node LetExpr (concatMap applyProd [head gls, gls !! 2])] -- It feels absolutely disgusting to write this line
@@ -134,6 +148,10 @@ applyProd (G.Node G.ProcCall (_:al:rest)) = do
   [Node ProcCall $ argList : (concatMap applyProd rest)]
 applyProd (G.Node G.Def (name:[])) = [makeLeaf name False]
 applyProd (G.Node G.Def (_:stl:_)) = [Node Def (applyProd stl)]
+
+applyProd (G.Leaf (G.T Lex.Keyword "greater") _) = [Leaf $ OrderVal GT]
+applyProd (G.Leaf (G.T Lex.Keyword "less") _)    = [Leaf $ OrderVal LT]
+
 
 -- Discard random keywords and symbols by default
 applyProd (G.Leaf _ _) = []
