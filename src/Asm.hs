@@ -31,7 +31,7 @@ preamble = ".global   main\n\
            -- \    call  show_int\n\n"
 
 postlude :: T.Text
-postlude = "\n\
+postlude = "\
            \    xor   %rax, %rax\n\
            \    ret\n"
 
@@ -63,7 +63,7 @@ newStackVar :: [T.Text]
 newStackVar = [ "    subq  $8, %rsp\n" ]
 
 adjustRsp :: Int -> [T.Text]
-adjustRsp val = [ "\n    addq  $" , x, ", %rsp\n" ]
+adjustRsp val = [ "    addq  $" , x, ", %rsp\n" ]
   where x = T.pack $ show val
 
 --exprToStack :: Int -> [T.Text]
@@ -85,12 +85,30 @@ callName name = [ "    call  ", T.pack name,"\n" ]
 callStore :: Store -> [T.Text]
 callStore s = [ "    call  *", showAsm s,"\n" ]
 
+ordJump :: Ordering -> T.Text
+ordJump EQ = "    jne   "
+ordJump GT = "    jl    "
+ordJump LT = "    jg    "
+
+jump :: String -> [T.Text]
+jump to = [ "    jmp   ", T.pack to, "\n" ]
+
+condJump :: String -> Store -> Ordering -> [T.Text]
+condJump to sbtr ord = [ "    cmp   ", showAsm sbtr, ", %rax\n"
+                       , ordJump ord, T.pack to, "\n" ]
+
+exitWith :: Int -> [T.Text]
+exitWith code = [ "    mov   ", T.pack $ show code, ", %rdi\n"
+                , "    mov   60, %rax\n"
+                , "    syscall\n" ]
+
+
 makeProc :: String -> [T.Text]
 makeProc name = [ T.pack name, ":\n"
                 , "    ret\n" ]
 
 beginProc :: String -> [T.Text]
-beginProc name = [ "\n",  T.pack name, ":\n" ]
+beginProc name = [ "",  T.pack name, ":\n" ]
 
 endProc :: Int -> [T.Text]
 endProc val

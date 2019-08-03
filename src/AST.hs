@@ -99,7 +99,6 @@ applyProd (G.Node G.ArgAssign (name:_:arg:[])) =
 
 -- TODO proc "like" is not enforced
 applyProd (G.Node G.CondList ( n0
-                             : _
                              : (G.Leaf (G.T Lex.Keyword "and") _)
                              : n1
                              : [])) =
@@ -109,6 +108,11 @@ applyProd (G.Node G.Cond (name:[])) =
   [Node Cond $ applyProd name]
 applyProd (G.Node G.Cond ( name
                          : (G.Leaf (G.T Lex.Keyword "being") _)
+                         : arg
+                         : [])) =
+  [Node Cond $ concatMap applyProd [name, arg]]
+applyProd (G.Node G.Cond ( name
+                         : (G.Leaf (G.T Lex.Keyword "like") _)
                          : arg
                          : [])) =
   [Node Cond $ concatMap applyProd [name, arg]]

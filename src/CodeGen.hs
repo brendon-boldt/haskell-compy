@@ -14,6 +14,7 @@ import Control.Monad.Reader
 import Control.Monad.Trans.State
 import System.IO
 import Data.Foldable
+import Data.Maybe (isJust, fromJust)
 
 import Debug.Trace
 
@@ -178,8 +179,8 @@ handleNewProcDef name procDef paramNodes =
       params = map fst paramsAndArgs
   in  Proc name [(params, procDef)] (Left argMap)
 
-addProc :: String -> Proc -> CGState -> ((), CGState)
-addProc name proc cgs =
+insertProc :: String -> Proc -> CGState -> ((), CGState)
+insertProc name proc cgs =
   let newMap = Map.insert name (ProcVar proc) (vars cgs)
   in  ((), cgs { vars = newMap })
 
@@ -194,6 +195,15 @@ resolveArgMaps name proc cgs =
       newMap = Map.insert name (ProcVar newProc) (vars cgs)
   in  ((), cgs { vars = newMap })
 
+
+-- TODO check that the parameters are the same
+appendProcDef :: Proc -> A.Node -> [A.Node] -> Proc
+appendProcDef proc def paramNodes =
+  let params = map (fst . makeParam) paramNodes
+  --in  proc { procdefs = (procdefs proc) : (params, def) }
+  -- Cancer semnatics
+  in  proc { procdefs = (params, def) : (procdefs proc) }
+
 -- This only mutates the CGState and does not write any assembly because the
 -- procedure definitions will all happen at the end.
 handleProcDef :: [A.Node] -> A.Node -> A.Node -> StateT CGState IO ()
@@ -202,10 +212,13 @@ handleProcDef condNodes (A.Leaf (A.NameVal A.ProcType name)) def = do
   -- How do we know this is a Proc?
   let maybeProc = Map.lookup name (vars cgs)
   let newProc = case maybeProc of
-                  (Just proc) -> error "I can't do this yet."
-                  otherwise -> handleNewProcDef name def condNodes
-  state (addProc name newProc)
-  state (resolveArgMaps name newProc)
+                  -- Not handling ProcRefs is a simplfiying assumption
+                  (Just (ProcVar proc@Proc{})) -> appendProcDef proc def condNodes
+                  Nothing -> handleNewProcDef name def condNodes
+  state (insertProc name newProc)
+  case maybeProc of
+    Nothing   -> state (resolveArgMaps name newProc)
+    otherwise -> return ()
   -- [resolve like reference]
 
 -- Can't I just use this (instead of the two above)
@@ -274,7 +287,7 @@ handleProcCall rawArgs (A.Leaf (A.NameVal A.ProcType procName)) = do
   pushArgRegisters
   mapM_ assign args
   updatedCgs <- get
-  let updatedProc = case (trace (show (vars updatedCgs)) (vars updatedCgs)) Map.! procName of
+  let updatedProc = case vars updatedCgs Map.! procName of
                       (ProcVar proc) -> proc
   case updatedProc of
     Proc{procname=n} -> w2f $ Asm.callName $ (procprefix cgs) ++ n
@@ -287,7 +300,8 @@ makeVal (A.Leaf (A.IntVal val)) _ = Asm.Literal val
 
 handleRoot :: [A.Node] -> StateT CGState IO ()
 handleRoot stl = do
-  sequence_ $ intersperse (w2f ["\n"]) (map build stl)
+  --sequence_ $ intersperse (w2f ["\n"]) (map build stl)
+  sequence_ $ (map build stl)
   cgs <- get
   --w2f (Asm.adjustRsp (getStackSpace cgs))
   w2f (Asm.endProc (getStackSpace cgs))
@@ -326,6 +340,28 @@ w2f :: [T.Text] -> StateT CGState IO ()
 w2f ts = get >>= (\cgs -> liftIO $ (cgwrite cgs) ts)
 
 
+-- needs to take procName as well
+-- foldl :: (b -> a -> b) -> b -> t a -> b
+-- foldl :: (SCI -> Cond -> SCI) -> SCI -> [Cond] -> SCI
+-- foldr to get things in the correct order?
+-- Maybe unabstract this?
+--buildConds :: CGState -> [Param] -> IO ()
+buildConds :: String -> [[Param]] -> StateT CGState IO ()
+buildConds procName paramsList = do
+  forM_ (zip [0..] $ reverse paramsList) $ \(num, params) -> do
+    let condLabel = (procName ++ "c" ++ (show num))
+    let procLabel = (procName ++ "d" ++ (show num))
+    forM_ (filter (isJust . cond) params) $ \param -> do
+      let (ord, node) = fromJust $ cond param
+      build node
+      cgs <- get
+      let store = varToStore $ vars cgs Map.! (paramvar param)
+      w2f $ Asm.condJump condLabel store ord
+    -- TODO Rename beginProc
+    w2f $ Asm.jump procLabel
+    w2f $ Asm.beginProc condLabel
+  w2f $ Asm.exitWith 2
+
 buildProcs :: CGState -> CGState -> IO ()
 buildProcs final init = do
   -- Temporary simplifying assumption: no conds, single def
@@ -334,20 +370,30 @@ buildProcs final init = do
   let nonRefProcs = filterNonRefProcs (vars final)
   forM_ nonRefProcs $ \proc -> do
     let name = procname proc
-    (cgwrite init) $ Asm.beginProc $ (procprefix final) ++ name
     let newInit = init { procprefix = (procprefix init) ++ name ++ "_"
                        , vars = justVarMap $ argmap proc
                        }
                        --, procs = filterProcArgs $ fst $ procdefs proc }
                        --, procs = undefined }
+    let procName = (procprefix final) ++ name
+    (cgwrite init) $ Asm.beginProc procName
+    newNewInit <- execStateT (buildConds procName (map fst $ procdefs proc)) newInit
     -- TODO make this accomodate conds
-    buildHelper newInit (snd $ head $ procdefs  proc)
+    --forM_ (zip [0..] (procdefs proc)) $ \(num, def) -> do
+    --   runStateT (buildConds procName (fst def)) newInit
+    --  --buildConds newInit $ fst def
+    --  (cgwrite init) $ Asm.beginProc $ procName ++ "c" ++ (show num)
+    -- TODO write failure condition
+    forM_ (zip [0..] (procdefs proc)) $ \(num, def) -> do
+      (cgwrite init) $ Asm.beginProc $ procName ++ "d" ++ (show num)
+      buildHelper newNewInit $ snd def
+      --buildHelper newInit $ snd def
 
-
+-- TODO This probably doesn't have to be its own function.
 buildHelper :: CGState -> A.Node -> IO ()
 buildHelper initState root = do
-  finalState <- runStateT (build root) initState
-  buildProcs (snd finalState) initState
+  finalState <- execStateT (build root) initState
+  buildProcs finalState initState
 
 generateAsm :: A.Node -> IO ()
 generateAsm ast = do
