@@ -158,7 +158,7 @@ makeParam (A.Node A.Cond ((A.Leaf (A.NameVal A.ProcType name)):[]))
 makeParam (A.Node A.Cond ( (A.Leaf (A.NameVal A.ProcType name))
                          : (A.Leaf (A.NameVal A.ProcType protoname))
                          : []))
-  = (Param { paramvar = name, cond = (error "When do we need this proc?") }, \s -> ProcVar (ProcRef { refstore = s, argmap = Right protoname }))
+  = (Param { paramvar = name, cond = Nothing }, \s -> ProcVar (ProcRef { refstore = s, argmap = Right protoname }))
 
 --makeParam x = error (show x)
 makeParam x = error "Could not makeParam."
