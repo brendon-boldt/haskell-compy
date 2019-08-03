@@ -42,6 +42,7 @@ instance Show Value where
   show (IntExpr x) = "IntExpr " ++ (show x)
   show (NameVal _ s) = "NameVal " ++ s
   show (NameExpr _ s) = "NameExpr " ++ s
+  show (OrderVal o) = "OrderVal " ++ (show o)
 
 data Sym = Program | 
   LetExpr | ShowExpr | 
@@ -107,10 +108,10 @@ applyProd (G.Node G.CondList (n0:[])) = applyProd n0
 applyProd (G.Node G.Cond (name:[])) =
   [Node Cond $ applyProd name]
 applyProd (G.Node G.Cond ( name
-                         : (G.Leaf (G.T Lex.Keyword "being") _)
+                         : order@(G.Leaf (G.T Lex.Keyword "being") _)
                          : arg
                          : [])) =
-  [Node Cond $ concatMap applyProd [name, arg]]
+  [Node Cond $ concatMap applyProd [name, order, arg]]
 applyProd (G.Node G.Cond ( name
                          : (G.Leaf (G.T Lex.Keyword "like") _)
                          : arg
@@ -155,6 +156,7 @@ applyProd (G.Node G.Def (_:stl:_)) = [Node Def (applyProd stl)]
 
 applyProd (G.Leaf (G.T Lex.Keyword "greater") _) = [Leaf $ OrderVal GT]
 applyProd (G.Leaf (G.T Lex.Keyword "less") _)    = [Leaf $ OrderVal LT]
+applyProd (G.Leaf (G.T Lex.Keyword "being") _)    = [Leaf $ OrderVal EQ]
 
 
 -- Discard random keywords and symbols by default

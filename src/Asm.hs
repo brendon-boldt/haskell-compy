@@ -36,7 +36,7 @@ postlude = "\
            \    ret\n"
 
 showAcc :: [T.Text]
-showAcc = [ "    movq  %rax, ", showAsm $ head argRegs, "\n" 
+showAcc = [ "    movq  %rax, ", showAsm $ head argRegs, "\n"
           , "    call  show_int\n" ]
 
 -- Eventually these could be monadic actions, right?
@@ -53,7 +53,7 @@ addToAcc :: Store -> [T.Text]
 addToAcc s = [ "    addq  " , showAsm s, ", %rax\n" ]
 
 subFromAcc :: Store -> [T.Text]
-subFromAcc s = [ "    subq  $" , showAsm s, ", %rax\n" 
+subFromAcc s = [ "    subq  " , showAsm s, ", %rax\n"
                , "    neg   %rax\n" ]
 
 mulAcc :: Store -> [T.Text]

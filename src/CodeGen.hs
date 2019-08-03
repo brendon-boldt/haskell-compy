@@ -161,7 +161,7 @@ makeParam (A.Node A.Cond ( (A.Leaf (A.NameVal A.ProcType name))
   = (Param { paramvar = name, cond = Nothing }, \s -> ProcVar (ProcRef { refstore = s, argmap = Right protoname }))
 
 --makeParam x = error (show x)
-makeParam x = error "Could not makeParam."
+makeParam x = error $ "Could not makeParam with: " ++ (show x)
 
 
 --handleAdditionalProcDef :
@@ -326,6 +326,8 @@ build (A.Node A.ShowExpr (c:[])) = do
 -- Refactor this into something nicer when I feel like it
 build (A.Node A.AddExpr (val:expr:[])) =
   (build expr) >> get >>= (w2f . Asm.addToAcc . (makeVal val))
+build (A.Node A.SubExpr (val:expr:[])) =
+  (build expr) >> get >>= (w2f . Asm.subFromAcc . (makeVal val))
 --build (A.Node A.SubExpr (val:expr:[])) =
 --  (build expr) >> (w2f $ Asm.subVal val)
 --build (A.Node A.MulExpr (val:expr:[])) =
@@ -340,15 +342,9 @@ w2f :: [T.Text] -> StateT CGState IO ()
 w2f ts = get >>= (\cgs -> liftIO $ (cgwrite cgs) ts)
 
 
--- needs to take procName as well
--- foldl :: (b -> a -> b) -> b -> t a -> b
--- foldl :: (SCI -> Cond -> SCI) -> SCI -> [Cond] -> SCI
--- foldr to get things in the correct order?
--- Maybe unabstract this?
---buildConds :: CGState -> [Param] -> IO ()
 buildConds :: String -> [[Param]] -> StateT CGState IO ()
 buildConds procName paramsList = do
-  forM_ (zip [0..] $ reverse paramsList) $ \(num, params) -> do
+  forM_ (zip [0..] paramsList) $ \(num, params) -> do
     let condLabel = (procName ++ "c" ++ (show num))
     let procLabel = (procName ++ "d" ++ (show num))
     forM_ (filter (isJust . cond) params) $ \param -> do
@@ -364,32 +360,21 @@ buildConds procName paramsList = do
 
 buildProcs :: CGState -> CGState -> IO ()
 buildProcs final init = do
-  -- Temporary simplifying assumption: no conds, single def
-  --forM_ (Map.keys $ procs final) $ \name -> do
-    --forM_ ((procs final) Map.! name) $ \proc -> do
   let nonRefProcs = filterNonRefProcs (vars final)
   forM_ nonRefProcs $ \proc -> do
     let name = procname proc
     let newInit = init { procprefix = (procprefix init) ++ name ++ "_"
                        , vars = justVarMap $ argmap proc
                        }
-                       --, procs = filterProcArgs $ fst $ procdefs proc }
-                       --, procs = undefined }
     let procName = (procprefix final) ++ name
     (cgwrite init) $ Asm.beginProc procName
-    newNewInit <- execStateT (buildConds procName (map fst $ procdefs proc)) newInit
-    -- TODO make this accomodate conds
-    --forM_ (zip [0..] (procdefs proc)) $ \(num, def) -> do
-    --   runStateT (buildConds procName (fst def)) newInit
-    --  --buildConds newInit $ fst def
-    --  (cgwrite init) $ Asm.beginProc $ procName ++ "c" ++ (show num)
-    -- TODO write failure condition
-    forM_ (zip [0..] (procdefs proc)) $ \(num, def) -> do
+    let paramsList = reverse $ map fst $ procdefs proc
+    let procList = reverse $ procdefs proc
+    newNewInit <- execStateT (buildConds procName paramsList) newInit
+    forM_ (zip [0..] procList) $ \(num, def) -> do
       (cgwrite init) $ Asm.beginProc $ procName ++ "d" ++ (show num)
       buildHelper newNewInit $ snd def
-      --buildHelper newInit $ snd def
 
--- TODO This probably doesn't have to be its own function.
 buildHelper :: CGState -> A.Node -> IO ()
 buildHelper initState root = do
   finalState <- execStateT (build root) initState
@@ -408,7 +393,6 @@ generateAsm ast = do
   hClose handle
     where getCGState h = CGState
                          { vars = Map.empty
-                         --, procs = Map.empty
                          , procprefix = ""
                          , sp = 8
                          , cgwrite = (mapM_ (TIO.hPutStr h)) }
