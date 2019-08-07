@@ -1,0 +1,17 @@
+with pA like pA and iY and iX and iI being 0, pA does `iX.'.
+with pA like pA and iY and iX and iI being 1, pA does `iY.'.
+with pA like pA and iY and iX and iI being 2, pA does `iY + iX.'.
+with pA like pA and iX and iY and iI, pA does `
+    given iI is iI - 1 and iX is iY and iY is iX + iY and pA does pA, do pA.
+    '.
+
+show given iI is 0 and iX is 1 and iY is 1 and pA does pA, do pA.
+show given iI is 1 and iX is 1 and iY is 1 and pA does pA, do pA.
+show given iI is 2 and iX is 1 and iY is 1 and pA does pA, do pA.
+show given iI is 3 and iX is 1 and iY is 1 and pA does pA, do pA.
+show given iI is 4 and iX is 1 and iY is 1 and pA does pA, do pA.
+show given iI is 5 and iX is 1 and iY is 1 and pA does pA, do pA.
+show given iI is 6 and iX is 1 and iY is 1 and pA does pA, do pA.
+show given iI is 40 and iX is 1 and iY is 1 and pA does pA, do pA.
+
+0.
