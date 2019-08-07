@@ -59,8 +59,11 @@ subFromAcc s = [ "    subq  " , showAsm s, ", %rax\n"
 mulAcc :: Store -> [T.Text]
 mulAcc s  = [ "    imulq $" , showAsm s, ", %rax\n" ]
 
-newStackVar :: [T.Text]
-newStackVar = [ "    subq  $8, %rsp\n" ]
+push :: Store -> [T.Text]
+push s = [ "    push  ", showAsm s, "\n" ]
+
+pushAcc :: [T.Text]
+pushAcc = [ "    push  %rax\n" ]
 
 adjustRsp :: Int -> [T.Text]
 adjustRsp val = [ "    addq  $" , x, ", %rsp\n" ]

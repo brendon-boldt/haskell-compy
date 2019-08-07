@@ -123,9 +123,7 @@ handleLet (A.Leaf (A.NameVal _ name)) = do
   maybeVar <- getVar name
   case maybeVar of
     (Just var) -> w2f $ Asm.accToStore var
-    Nothing    -> do
-      w2f $ Asm.newStackVar
-      newStackVar name >>= resolveStore >>= (w2f . Asm.accToStore)
+    Nothing    -> newStackVar name >> (w2f $ Asm.pushAcc)
 
 handleNameExpr :: String -> StateT CGState IO ()
 handleNameExpr name = do
@@ -220,9 +218,11 @@ pushArgRegisters =
   let
     toStack key var = case varToStore var of
       (RawStore reg@(Asm.Register _)) -> do
-        w2f $ Asm.newStackVar
-        newStore <- (resolveStore =<< (regVarToStack key var))
-        w2f $ Asm.storeToStore reg newStore
+        --w2f $ Asm.newStackVar
+        --newStore <- (resolveStore =<< (regVarToStack key var))
+        regVarToStack key var
+        --w2f $ Asm.storeToStore reg newStore
+        w2f $ Asm.push reg
       _ -> return ()
   -- Could this just be mapM?
     stores = (Map.filter isStoreVar) . vars
