@@ -52,7 +52,8 @@ getProds Cond = [ [T' Lex.Name]
 
 --getProds Arg = [ [Def], [Expr] ]
 getProds ArgAssign = [ [T' Lex.Name, lKW "is", Expr]
-                     , [T' Lex.Name, lKW "does", Def] ]
+                     , [T' Lex.Name, lKW "does", Def]
+                     , [T' Lex.Name] ]
 getProds ArgList = [ [ArgAssign]
                    , [ArgAssign, lKW "and", ArgList] ]
 getProds ProcCall =
