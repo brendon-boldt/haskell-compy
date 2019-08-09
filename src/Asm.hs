@@ -88,6 +88,9 @@ callName name = [ "    call  ", T.pack name,"\n" ]
 callStore :: Store -> [T.Text]
 callStore s = [ "    call  *", showAsm s,"\n" ]
 
+jumpStore :: Store -> [T.Text]
+jumpStore s = [ "    jmp   *", showAsm s,"\n" ]
+
 ordJump :: Ordering -> T.Text
 ordJump EQ = "    jne   "
 ordJump GT = "    jl    "

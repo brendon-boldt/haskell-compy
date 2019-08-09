@@ -95,8 +95,8 @@ getVar name = do
     (Just (IntVar s)) -> liftM Just $ resolveStore s
     Nothing  -> return Nothing
 
-getStackSpace :: CGState -> Int
-getStackSpace cgs = 8 - (sp cgs)
+getStackSpace :: CGST Int
+getStackSpace = get >>= (return . (8-) . sp)
 
 -- TODO rename this to something less misleading
 newStackVar :: String -> CGST Store
@@ -245,8 +245,8 @@ procToStore argName targetStore = do
       w2f $ Asm.storeToStore asmRefStore asmTargetStore
     x -> error $ (show x) ++ " cannot be moved to stored as if it were a proc."
 
-handleProcCall :: [A.Node] -> A.Node -> StateT CGState IO ()
-handleProcCall rawArgs (A.Leaf (A.NameVal A.ProcType procName)) = do
+handleProcCall :: [A.Node] -> A.Node -> Bool -> StateT CGState IO ()
+handleProcCall rawArgs (A.Leaf (A.NameVal A.ProcType procName)) isTail = do
   cgs <- get
   let proc = case (vars cgs) Map.! procName of
                 (ProcVar proc) -> proc
@@ -266,11 +266,23 @@ handleProcCall rawArgs (A.Leaf (A.NameVal A.ProcType procName)) = do
   updatedCgs <- get
   let updatedProc = case vars updatedCgs Map.! procName of
                       (ProcVar proc) -> proc
+  let callName = if isTail
+                   then \n -> do
+                     w2f . Asm.adjustRsp =<< getStackSpace
+                     w2f $ Asm.jump $ procprefix cgs ++ n
+                   else \n -> w2f $ Asm.callName $ procprefix cgs ++ n
+  let callStore = if isTail
+      then \asmStore -> do
+        stackSpace <- getStackSpace
+        let adjStore = case asmStore of
+                     (Asm.Stack x) -> Asm.Stack (x - stackSpace)
+        w2f $ Asm.adjustRsp stackSpace
+        w2f $ Asm.jumpStore adjStore
+      else \asmStore -> w2f $ Asm.callStore asmStore
   case updatedProc of
-    Proc{procname=n} -> w2f $ Asm.callName $ (procprefix cgs) ++ n
+    Proc{procname=n} -> callName n
     ProcRef{refstore=store} -> do
-      asmStore <- resolveStore store
-      w2f $ Asm.callStore asmStore
+      callStore =<< (resolveStore store)
 
 makeVal :: A.Node -> CGST Asm.Store
 makeVal (A.Leaf (A.NameVal _ name)) = do
@@ -283,8 +295,8 @@ handleRoot stl = do
   --sequence_ $ intersperse (w2f ["\n"]) (map build stl)
   sequence_ $ (map build stl)
   cgs <- get
-  --w2f (Asm.adjustRsp (getStackSpace cgs))
-  w2f (Asm.endProc (getStackSpace cgs))
+  -- TODO don't do this if there is tail call
+  w2f . Asm.endProc =<< getStackSpace
 
 build :: A.Node -> StateT CGState IO ()
 
@@ -295,9 +307,12 @@ build (A.Node A.ProcDef (name:def:[])) = handleProcDef [] name def
 build (A.Node A.ProcDef (conds:name:def:[])) =
   let condList = case conds of (A.Node A.CondList cs) -> cs
   in handleProcDef condList name def
-build (A.Node A.ProcCall (name:[])) = handleProcCall [] name
+build (A.Node A.ProcCall (name:[])) = handleProcCall [] name False
 build (A.Node A.ProcCall (args:name:[])) =
-  handleProcCall (A.children args) name
+  handleProcCall (A.children args) name False
+build (A.Node A.ProcTailCall (name:[])) = handleProcCall [] name True
+build (A.Node A.ProcTailCall (args:name:[])) =
+  handleProcCall (A.children args) name True
 
 build (A.Node A.ShowExpr (c:[])) = do
   pushArgRegisters
