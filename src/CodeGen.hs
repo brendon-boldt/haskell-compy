@@ -218,10 +218,7 @@ pushArgRegisters =
   let
     toStack key var = case varToStore var of
       (RawStore reg@(Asm.Register _)) -> do
-        --w2f $ Asm.newStackVar
-        --newStore <- (resolveStore =<< (regVarToStack key var))
         regVarToStack key var
-        --w2f $ Asm.storeToStore reg newStore
         w2f $ Asm.push reg
       _ -> return ()
   -- Could this just be mapM?

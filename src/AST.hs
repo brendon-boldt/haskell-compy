@@ -10,10 +10,13 @@ import qualified Grammar as G
 import qualified Lex as Lex
 
 import Debug.Trace
+import Control.Monad.State
 
 if' :: Bool -> a -> a -> a
 if' True  x _ = x
 if' False _ y = y
+
+data AstState = AstState { tailSt :: Bool }
 
 --data Node = Node Sym [Node] |
 data Node = Node { sym :: Sym, children :: [Node] } |
@@ -47,7 +50,8 @@ instance Show Value where
 data Sym = Program | 
   LetExpr | ShowExpr | 
   DivExpr | MulExpr | SubExpr | AddExpr |
-  ProcCall | Def | ProcDef |
+  ProcCall | ProcTailCall |
+  Def | ProcDef |
   ArgAssign | ArgList |
   Cond | CondList
     deriving (Show, Eq)
@@ -85,89 +89,137 @@ toBinExpr (G.Leaf _ (Lex.Token _ td))
   | (Lex.value td) == "-" = SubExpr
   | (Lex.value td) == "+" = AddExpr
 
-applyProd :: G.Node -> [Node]
+setTailSt :: Bool -> State AstState ()
+setTailSt b =
+  state $ \s -> ((), s { tailSt = b })
 
-applyProd (G.Node G.S ns) = [Node Program (applyProd $ head ns)]
-applyProd (G.Node G.StL (n0:n1:[])) = (head (applyProd n0)) : (applyProd n1)
-applyProd (G.Node G.StL (n0:[])) = applyProd n0
+getProcCallConstructor :: State AstState Sym
+getProcCallConstructor = do
+  as <- get
+  if tailSt as
+    then setTailSt False >> return ProcTailCall
+    else return ProcCall
+
+--applyProd :: G.Node -> [Node]
+applyProd :: G.Node -> State AstState [Node]
+
+applyProd (G.Node G.S ns) =
+  pure . (Node Program) <$> (applyProd $ head ns)
+applyProd (G.Node G.StL (n0:n1:[])) = do
+  stNode <- head <$> applyProd n0
+  nodes <- applyProd n1
+  return $ stNode : nodes
+applyProd (G.Node G.StL (n0:[])) = do
+  state (\s -> ((), s { tailSt = True }))
+  applyProd n0
 applyProd (G.Node G.St (n0:_)) = applyProd n0
 
-applyProd (G.Node G.ArgList (n0:_:n1:[])) =
-  (head (applyProd n0)) : (applyProd n1)
+applyProd (G.Node G.ArgList (n0:_:n1:[])) = do
+  argNode <- head <$> applyProd n0
+  nodes <- applyProd n1
+  return $ argNode : nodes
 applyProd (G.Node G.ArgList (n0:[])) = applyProd n0
-applyProd (G.Node G.ArgAssign (name:_:arg:[])) =
-  [Node ArgAssign $ concatMap applyProd [name, arg]]
-applyProd (G.Node G.ArgAssign (name:[])) =
+applyProd (G.Node G.ArgAssign (name:_:arg:[])) = do
+  nodes <- concat <$> (sequence $ map applyProd [name, arg])
+  return $ pure $ Node ArgAssign nodes
+applyProd (G.Node G.ArgAssign (name:[])) = do
   -- Use name here twice for implciit self-assign
-  [Node ArgAssign $ concatMap applyProd [name, name]]
+  nodes <- concat <$> (sequence $ map applyProd [name, name])
+  return $ pure $ Node ArgAssign $ nodes
 
 -- TODO proc "like" is not enforced
 applyProd (G.Node G.CondList ( n0
                              : (G.Leaf (G.T Lex.Keyword "and") _)
                              : n1
-                             : [])) =
-  (head (applyProd n0)) : (applyProd n1)
+                             : [])) = do
+  condNode <- head <$> (applyProd n0)
+  nodes <- applyProd n1
+  return $ condNode:nodes
 applyProd (G.Node G.CondList (n0:[])) = applyProd n0
 applyProd (G.Node G.Cond (name:[])) =
-  [Node Cond $ applyProd name]
+  pure . (Node Cond) <$> (applyProd name)
 applyProd (G.Node G.Cond ( name
                          : order@(G.Leaf (G.T Lex.Keyword "being") _)
                          : arg
-                         : [])) =
-  [Node Cond $ concatMap applyProd [name, order, arg]]
+                         : [])) = do
+  nodes <- fmap concat $ sequence $ map applyProd [name, order, arg]
+  return $ pure $ Node Cond nodes
 applyProd (G.Node G.Cond ( name
                          : (G.Leaf (G.T Lex.Keyword "like") _)
                          : arg
-                         : [])) =
-  [Node Cond $ concatMap applyProd [name, arg]]
+                         : [])) = do
+  nodes <- fmap concat $ sequence $ map applyProd [name, arg]
+  return $ pure $ Node Cond nodes
 applyProd (G.Node G.Cond ( name
                          -- : (G.Leaf (G.T Lex.Keybword order) _)
                          : order@(G.Leaf _ _)
                          : (G.Leaf (G.T Lex.Keyword "than") _)
                          : arg
-                         : [])) =
-  [Node Cond $ concatMap applyProd [name, order, arg]]
+                         : [])) = do
+  nodes <- fmap concat $ sequence $ map applyProd [name, order, arg]
+  return $ pure $ Node Cond nodes
 
 applyProd (G.Node G.Expr (gl@(G.Leaf _ _):gls))
-  | isLet gl = [Node LetExpr (concatMap applyProd [head gls, gls !! 2])] -- It feels absolutely disgusting to write this line
-  | isShow gl = [Node ShowExpr (concatMap applyProd gls)]
-applyProd (G.Node G.Expr ns@(n0:(G.Node G.BinOp op):n1:[])) =
-  [Node (toBinExpr $ head op) (concatMap applyProd [n0, n1])]
+  | isLet gl = do
+    glsNode <- fmap concat $ sequence (map applyProd [head gls, gls !! 2])
+    return $ pure $ Node LetExpr glsNode
+  -- It feels absolutely disgusting to write this line
+  | isShow gl = do
+    glsNode <- fmap concat $ sequence (map applyProd gls)
+    return $ pure $ Node ShowExpr glsNode
+applyProd (G.Node G.Expr ns@(n0:(G.Node G.BinOp op):n1:[])) = do
+  operands <- fmap concat $ sequence (map applyProd [n0, n1])
+  return $ pure $ Node (toBinExpr $ head op) operands
 --applyProd (G.Node G.Expr ((G.Node G.Val val):[])) = [makeLeaf $ head val]
-applyProd (G.Node G.Expr ((G.Node G.Val val):[])) = [makeLeaf (head val) True]
+applyProd (G.Node G.Expr ((G.Node G.Val val):[])) =
+  return $ pure $ makeLeaf (head val) True
 
-applyProd (G.Node G.Expr (n@(G.Node G.ProcCall def):[])) = applyProd n
+applyProd (G.Node G.Expr (n@(G.Node G.ProcCall def):[])) = do
+  as <- get
+  if tailSt as
+    then setTailSt True >> (applyProd n)
+    else applyProd n
 --applyProd (G.Node G.Expr ns) = applyProd ns
 
-applyProd (G.Node G.Val val) = [makeLeaf (head val) False]
+applyProd (G.Node G.Val val) = return $ pure $ makeLeaf (head val) False
 
-applyProd gl@(G.Leaf (G.T' Lex.Name) _) = [makeLeaf gl False]
+applyProd gl@(G.Leaf (G.T' Lex.Name) _) = return $ pure $ makeLeaf gl False
 
-applyProd (G.Node G.ProcDef (name:_:def:[])) =
-  [Node ProcDef ((makeLeaf name False) : (applyProd def))]
-applyProd (G.Node G.ProcDef (_:conds:_:name:_:def:[])) =
-  let children = (Node CondList (applyProd conds)) : ((makeLeaf name False) : (applyProd def))
-  in [Node ProcDef children]
-applyProd (G.Node G.ProcCall (_:def:[])) =
-  [Node ProcCall (applyProd def)]
+applyProd (G.Node G.ProcDef (name:_:def:[])) = do
+  defNode <- applyProd def
+  return $ pure $ Node ProcDef ((makeLeaf name False) : defNode)
+applyProd (G.Node G.ProcDef (_:conds:_:name:_:def:[])) = do
+  defNodes <- (applyProd def)
+  condNode <- fmap (Node CondList) (applyProd conds) 
+  let children = condNode : ((makeLeaf name False) : defNodes)
+  return $ pure $ Node ProcDef children
+applyProd (G.Node G.ProcCall (_:def:[])) = do
+  pcConstructor <- getProcCallConstructor
+  fmap (pure . (Node pcConstructor)) (applyProd def)
 -- Should I use indexing instead of PM? Or just use arrays?
 applyProd (G.Node G.ProcCall (_:al:rest)) = do
-  let argList = Node ArgList $ applyProd al
-  [Node ProcCall $ argList : (concatMap applyProd rest)]
-applyProd (G.Node G.Def (name:[])) = [makeLeaf name False]
-applyProd (G.Node G.Def (_:stl:_)) = [Node Def (applyProd stl)]
+  argList <- fmap (Node ArgList) $ applyProd al
+  appliedRest <- fmap concat $ sequence $ map applyProd rest
+  pcConstructor <- getProcCallConstructor
+  return $ pure $ Node pcConstructor $ argList : appliedRest
+applyProd (G.Node G.Def (name:[])) = return [makeLeaf name False]
+applyProd (G.Node G.Def (_:stl:_)) =
+  liftM (pure . (Node Def)) $ applyProd stl
 
-applyProd (G.Leaf (G.T Lex.Keyword "greater") _) = [Leaf $ OrderVal GT]
-applyProd (G.Leaf (G.T Lex.Keyword "less") _)    = [Leaf $ OrderVal LT]
-applyProd (G.Leaf (G.T Lex.Keyword "being") _)    = [Leaf $ OrderVal EQ]
+applyProd (G.Leaf (G.T Lex.Keyword "greater") _) = return [Leaf $ OrderVal GT]
+applyProd (G.Leaf (G.T Lex.Keyword "less") _)    = return [Leaf $ OrderVal LT]
+applyProd (G.Leaf (G.T Lex.Keyword "being") _)   = return [Leaf $ OrderVal EQ]
 
 
 -- Discard random keywords and symbols by default
-applyProd (G.Leaf _ _) = []
+applyProd (G.Leaf _ _) = return []
 
 --applyProd (G.Node gs ns) = [Wrapper gs (concatMap applyProd ns)]
 --applyProd n@(G.Leaf _ _) = [ValWrapper n]
 applyProd x = error $ "No AST production for " ++ show x
 
 buildAST :: G.Node -> Node
-buildAST root = head $ applyProd root
+--buildAST root = head $ applyProd root
+buildAST root =
+ let initState = AstState { tailSt = False }
+ in  head $ evalState (applyProd root) initState
