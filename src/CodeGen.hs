@@ -274,6 +274,8 @@ handleProcCall rawArgs (A.Leaf (A.NameVal A.ProcType procName)) isTail = do
   let callStore = if isTail
       then \asmStore -> do
         stackSpace <- getStackSpace
+        -- We have to clear the stack space before we jump, but we have to
+        -- use the a variable on the stack for the jump address
         let adjStore = case asmStore of
                      (Asm.Stack x) -> Asm.Stack (x - stackSpace)
         w2f $ Asm.adjustRsp stackSpace

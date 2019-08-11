@@ -110,8 +110,10 @@ applyProd (G.Node G.StL (n0:n1:[])) = do
   nodes <- applyProd n1
   return $ stNode : nodes
 applyProd (G.Node G.StL (n0:[])) = do
-  state (\s -> ((), s { tailSt = True }))
-  applyProd n0
+  setTailSt True
+  let res = applyProd n0
+  setTailSt False
+  res
 applyProd (G.Node G.St (n0:_)) = applyProd n0
 
 applyProd (G.Node G.ArgList (n0:_:n1:[])) = do
